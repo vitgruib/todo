@@ -7,6 +7,9 @@ const DEFAULT_ALARM_SOUND = 'alarm';
 const ALARM_NAME = 'todo-ai-auto-open-alarm';
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 const PLAY_SOUND_MESSAGE_TYPE = 'todo-ai-play-alarm-sound';
+const CHAT_REQUEST_MESSAGE_TYPE = 'todo-ai-chat-request';
+const CHAT_RESULTS_KEY = 'todo-ai-chat-results';
+const MAX_CHAT_RESULTS = 25;
 let creatingOffscreenDocument = null;
 
 function normalizeIntervalMinutes(value) {
@@ -72,6 +75,113 @@ function openOrFocusExtensionPage() {
 
         chrome.tabs.create({ url: tabViewUrl });
     });
+}
+
+function parseJson(raw) {
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+function storageGet(keys) {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(keys, (result) => resolve(result));
+    });
+}
+
+function storageSet(items) {
+    return new Promise((resolve) => {
+        chrome.storage.local.set(items, () => resolve());
+    });
+}
+
+async function storeChatResult(result) {
+    const existingRaw = await storageGet([CHAT_RESULTS_KEY]);
+    const existing = existingRaw?.[CHAT_RESULTS_KEY];
+    const normalized =
+        existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+
+    normalized[result.requestId] = result;
+
+    const trimmed = Object.fromEntries(
+        Object.entries(normalized)
+            .filter(([, value]) => value && typeof value === 'object')
+            .sort(([, a], [, b]) => {
+                const aTime = typeof a.completedAt === 'number' ? a.completedAt : 0;
+                const bTime = typeof b.completedAt === 'number' ? b.completedAt : 0;
+                return bTime - aTime;
+            })
+            .slice(0, MAX_CHAT_RESULTS)
+    );
+
+    await storageSet({ [CHAT_RESULTS_KEY]: trimmed });
+}
+
+function normalizeChatMessages(messages) {
+    if (!Array.isArray(messages)) {
+        return [];
+    }
+
+    return messages
+        .filter((message) => typeof message?.text === 'string' && message.text.trim().length > 0)
+        .slice(-10)
+        .map((message) => ({
+            role: message.role === 'assistant' ? 'assistant' : 'user',
+            text: String(message.text),
+        }));
+}
+
+function normalizeTodoContext(todoContext) {
+    if (todoContext === null || todoContext === undefined) {
+        return null;
+    }
+
+    if (typeof todoContext === 'string') {
+        const trimmed = todoContext.trim();
+        return trimmed.length > 0 ? trimmed.slice(0, 20_000) : null;
+    }
+
+    if (typeof todoContext === 'object') {
+        try {
+            return JSON.stringify(todoContext).slice(0, 20_000);
+        } catch {
+            return null;
+        }
+    }
+
+    return null;
+}
+
+async function runChatRequest(requestId, proxyUrl, messages, todoContext) {
+    const response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, todoContext }),
+    });
+
+    const rawText = await response.text();
+    const payload = parseJson(rawText);
+
+    if (!response.ok) {
+        const errorDetail =
+            (payload && typeof payload.error === 'string' && payload.error) ||
+            rawText.trim() ||
+            `Proxy request failed (${response.status} ${response.statusText})`;
+        throw new Error(`HTTP ${response.status} ${response.statusText}: ${errorDetail}`);
+    }
+
+    const text =
+        (payload && typeof payload.text === 'string' && payload.text.trim()) ||
+        (typeof rawText === 'string' ? rawText.trim() : '');
+
+    return {
+        requestId,
+        ok: true,
+        text: text || 'Proxy returned an empty response.',
+        completedAt: Date.now(),
+    };
 }
 
 async function hasOffscreenDocument() {
@@ -157,4 +267,41 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
     openOrFocusExtensionPage();
     void playAlarmSound();
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message || message.type !== CHAT_REQUEST_MESSAGE_TYPE) {
+        return undefined;
+    }
+
+    const requestId = typeof message.requestId === 'string' ? message.requestId.trim() : '';
+    const proxyUrl = typeof message.proxyUrl === 'string' ? message.proxyUrl.trim() : '';
+    const messages = normalizeChatMessages(message.messages);
+    const todoContext = normalizeTodoContext(message.todoContext);
+
+    if (!requestId || !proxyUrl || messages.length === 0) {
+        sendResponse({ ok: false, error: 'Invalid chat request payload.' });
+        return false;
+    }
+
+    void (async () => {
+        try {
+            const result = await runChatRequest(requestId, proxyUrl, messages, todoContext);
+            await storeChatResult(result);
+            openOrFocusExtensionPage();
+            sendResponse({ ok: true });
+        } catch (error) {
+            const messageText = error instanceof Error ? error.message : String(error);
+            await storeChatResult({
+                requestId,
+                ok: false,
+                error: messageText || 'Unknown background chat error',
+                completedAt: Date.now(),
+            });
+            openOrFocusExtensionPage();
+            sendResponse({ ok: false, error: messageText });
+        }
+    })();
+
+    return true;
 });

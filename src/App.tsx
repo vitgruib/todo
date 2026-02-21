@@ -6,10 +6,8 @@ import { CompanionFrame } from './components/CompanionFrame';
 
 const INTERVAL_MINUTES_KEY = 'todo-ai-auto-open-interval-minutes';
 const ALARM_SOUND_KEY = 'todo-ai-alarm-sound';
-const AI_PROXY_URL_KEY = 'todo-ai-proxy-url';
 const DEFAULT_INTERVAL_MINUTES = 120;
 const MIN_INTERVAL_MINUTES = 1;
-const DEFAULT_PROXY_URL = 'http://localhost:8787/api/chat';
 const ALARM_SOUND_OPTIONS = [
     { value: 'alarm', label: 'Alarm' },
     { value: 'ding', label: 'Ding' },
@@ -41,33 +39,6 @@ const normalizeAlarmSound = (value: unknown): AlarmSoundOption => {
         : DEFAULT_ALARM_SOUND;
 };
 
-const normalizeProxyUrl = (value: unknown): string => {
-    if (typeof value !== 'string') {
-        return DEFAULT_PROXY_URL;
-    }
-
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return DEFAULT_PROXY_URL;
-    }
-
-    try {
-        const parsed = new URL(trimmed);
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return DEFAULT_PROXY_URL;
-        }
-
-        parsed.hash = '';
-        if (!parsed.pathname || parsed.pathname === '/') {
-            parsed.pathname = '/api/chat';
-        }
-
-        return parsed.toString().replace(/\/+$/, '');
-    } catch {
-        return DEFAULT_PROXY_URL;
-    }
-};
-
 function App() {
     const isTabMode = new URLSearchParams(window.location.search).get('view') === 'tab';
     const {
@@ -81,7 +52,6 @@ function App() {
     } = useTodos();
     const [intervalMinutes, setIntervalMinutes] = useState<number>(DEFAULT_INTERVAL_MINUTES);
     const [alarmSound, setAlarmSound] = useState<AlarmSoundOption>(DEFAULT_ALARM_SOUND);
-    const [proxyUrl, setProxyUrl] = useState<string>(DEFAULT_PROXY_URL);
     const [hasLoadedSettings, setHasLoadedSettings] = useState<boolean>(false);
 
     useLayoutEffect(() => {
@@ -96,13 +66,11 @@ function App() {
 
     useEffect(() => {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-            chrome.storage.local.get([INTERVAL_MINUTES_KEY, ALARM_SOUND_KEY, AI_PROXY_URL_KEY], (result) => {
+            chrome.storage.local.get([INTERVAL_MINUTES_KEY, ALARM_SOUND_KEY], (result) => {
                 const normalizedInterval = normalizeIntervalMinutes(result[INTERVAL_MINUTES_KEY]);
                 const normalizedSound = normalizeAlarmSound(result[ALARM_SOUND_KEY]);
-                const normalizedProxyUrl = normalizeProxyUrl(result[AI_PROXY_URL_KEY]);
                 setIntervalMinutes(normalizedInterval);
                 setAlarmSound(normalizedSound);
-                setProxyUrl(normalizedProxyUrl);
                 setHasLoadedSettings(true);
             });
             return;
@@ -120,12 +88,6 @@ function App() {
             setAlarmSound(normalizedSound);
         }
 
-        const savedProxyUrl = localStorage.getItem(AI_PROXY_URL_KEY);
-        if (savedProxyUrl) {
-            const normalizedProxyUrl = normalizeProxyUrl(savedProxyUrl);
-            setProxyUrl(normalizedProxyUrl);
-        }
-
         setHasLoadedSettings(true);
     }, []);
 
@@ -137,15 +99,13 @@ function App() {
             chrome.storage.local.set({
                 [INTERVAL_MINUTES_KEY]: intervalMinutes,
                 [ALARM_SOUND_KEY]: alarmSound,
-                [AI_PROXY_URL_KEY]: normalizeProxyUrl(proxyUrl),
             });
             return;
         }
 
         localStorage.setItem(INTERVAL_MINUTES_KEY, String(intervalMinutes));
         localStorage.setItem(ALARM_SOUND_KEY, alarmSound);
-        localStorage.setItem(AI_PROXY_URL_KEY, normalizeProxyUrl(proxyUrl));
-    }, [alarmSound, hasLoadedSettings, intervalMinutes, proxyUrl]);
+    }, [alarmSound, hasLoadedSettings, intervalMinutes]);
 
     const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const parsed = Number(e.target.value);
@@ -154,14 +114,6 @@ function App() {
 
     const handleAlarmSoundChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setAlarmSound(normalizeAlarmSound(e.target.value));
-    };
-
-    const handleProxyUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setProxyUrl(e.target.value);
-    };
-
-    const handleProxyUrlBlur = () => {
-        setProxyUrl(normalizeProxyUrl(proxyUrl));
     };
 
     const openFullScreenView = () => {
@@ -176,8 +128,6 @@ function App() {
 
         window.open(tabViewUrl, '_blank', 'noopener,noreferrer');
     };
-
-    const resolvedProxyUrl = normalizeProxyUrl(proxyUrl);
 
     return (
         <div className="app-container">
@@ -221,18 +171,6 @@ function App() {
                                 ))}
                             </select>
                         </div>
-                        <div className="interval-setting setting-wide">
-                            <label htmlFor="proxyUrl">AI proxy URL</label>
-                            <input
-                                id="proxyUrl"
-                                type="url"
-                                value={proxyUrl}
-                                onChange={handleProxyUrlChange}
-                                onBlur={handleProxyUrlBlur}
-                                placeholder="https://your-proxy-domain/api/chat"
-                            />
-                            <p className="setting-hint">Use a hosted HTTPS endpoint so chat works without a local server.</p>
-                        </div>
                     </div>
                 </header>
 
@@ -250,7 +188,7 @@ function App() {
             </div>
 
             <aside className="companion-sidebar">
-                <CompanionFrame proxyUrl={resolvedProxyUrl} />
+                <CompanionFrame todos={todos} />
             </aside>
         </div>
     );

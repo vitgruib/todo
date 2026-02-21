@@ -29,8 +29,7 @@ if (existsSync(envFile)) {
 }
 
 const PORT = Number(process.env.PORT ?? '8787');
-const DEFAULT_GEMINI_API_KEY = 'AIzaSyB8O5YdsOXCJlTcqkbMw5y8alF-DowIVmY';
-const GEMINI_API_KEY = (process.env.GEMINI_API_KEY ?? DEFAULT_GEMINI_API_KEY).trim();
+const GEMINI_API_KEY = (process.env.GEMINI_API_KEY ?? '').trim();
 const GEMINI_MODEL = (process.env.GEMINI_MODEL ?? 'gemini-2.5-flash-lite').trim();
 const SYSTEM_PROMPT =
     'You are Todo AI. Keep responses concise and actionable. Help break tasks into practical steps when asked.';
@@ -82,6 +81,34 @@ const extractGeminiText = (payload) => {
 
 const toGeminiRole = (role) => (role === 'assistant' ? 'model' : 'user');
 
+const normalizeTodoContext = (value) => {
+    if (value === null || value === undefined) {
+        return '';
+    }
+
+    if (typeof value === 'string') {
+        return value.trim().slice(0, 20_000);
+    }
+
+    if (typeof value === 'object') {
+        try {
+            return JSON.stringify(value).slice(0, 20_000);
+        } catch {
+            return '';
+        }
+    }
+
+    return '';
+};
+
+const buildSystemPrompt = (todoContext) => {
+    if (!todoContext) {
+        return SYSTEM_PROMPT;
+    }
+
+    return `${SYSTEM_PROMPT}\n\nCurrent user todo context (JSON):\n${todoContext}`;
+};
+
 const server = createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
         sendJson(res, 204, {});
@@ -120,6 +147,7 @@ const server = createServer(async (req, res) => {
 
     try {
         const body = await readBody(req);
+        const todoContext = normalizeTodoContext(body?.todoContext);
         const inputMessages = Array.isArray(body?.messages) ? body.messages : [];
         const messages = inputMessages
             .filter((message) => typeof message?.text === 'string' && message.text.trim().length > 0)
@@ -143,7 +171,7 @@ const server = createServer(async (req, res) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 system_instruction: {
-                    parts: [{ text: SYSTEM_PROMPT }],
+                    parts: [{ text: buildSystemPrompt(todoContext) }],
                 },
                 contents: messages,
             }),

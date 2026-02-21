@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Todo } from '../types';
 
 type ChatRole = 'assistant' | 'user';
 
@@ -8,16 +9,34 @@ interface ChatMessage {
     text: string;
 }
 
-const CHAT_STORAGE_KEY = 'todo_ai_companion_chat_v1';
-const INITIAL_ASSISTANT_TEXT = 'AI is served by your backend proxy. Start the proxy server to chat.';
-
-const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const DEFAULT_MESSAGES: ChatMessage[] = [{ id: createId(), role: 'assistant', text: INITIAL_ASSISTANT_TEXT }];
+interface StoredChatResult {
+    requestId: string;
+    ok: boolean;
+    text?: string;
+    error?: string;
+    completedAt: number;
+}
 
 interface PersistedChatState {
     statusMessage: string;
     messages: ChatMessage[];
+    pendingRequestId: string | null;
 }
+
+interface CompanionFrameProps {
+    todos: Todo[];
+}
+
+const CHAT_STORAGE_KEY = 'todo_ai_companion_chat_v1';
+const CHAT_RESULTS_KEY = 'todo-ai-chat-results';
+const CHAT_REQUEST_MESSAGE_TYPE = 'todo-ai-chat-request';
+const CHAT_RESULTS_LOCAL_FALLBACK_KEY = 'todo_ai_companion_chat_results_v1';
+const INITIAL_ASSISTANT_TEXT = 'AI is served by your hosted backend proxy.';
+const PROXY_URL = 'https://todo-cl9u.onrender.com/api/chat';
+const MAX_TODO_CONTEXT_ITEMS = 60;
+
+const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const DEFAULT_MESSAGES: ChatMessage[] = [{ id: createId(), role: 'assistant', text: INITIAL_ASSISTANT_TEXT }];
 
 const parseJson = (raw: string): unknown => {
     try {
@@ -25,6 +44,31 @@ const parseJson = (raw: string): unknown => {
     } catch {
         return null;
     }
+};
+
+const buildTodoContext = (todos: Todo[]) => {
+    const now = new Date().toISOString();
+    const totalCount = todos.length;
+    const completedCount = todos.filter((todo) => todo.completed).length;
+    const openCount = totalCount - completedCount;
+
+    const items = todos.slice(0, MAX_TODO_CONTEXT_ITEMS).map((todo) => ({
+        title: todo.title,
+        completed: todo.completed,
+        deadline: todo.deadline ?? null,
+        steps: todo.steps.map((step) => ({
+            title: step.title,
+            completed: step.completed,
+        })),
+    }));
+
+    return {
+        generatedAt: now,
+        totalCount,
+        openCount,
+        completedCount,
+        items,
+    };
 };
 
 const formatErrorForChat = (error: unknown, proxyUrl: string): string => {
@@ -57,6 +101,10 @@ const formatErrorForChat = (error: unknown, proxyUrl: string): string => {
 const getExtensionStorage = (): {
     get: (keys: string[] | string, callback: (items: Record<string, unknown>) => void) => void;
     set: (items: Record<string, unknown>, callback?: () => void) => void;
+    onChanged?: {
+        addListener: (callback: (changes: Record<string, unknown>, areaName: string) => void) => void;
+        removeListener: (callback: (changes: Record<string, unknown>, areaName: string) => void) => void;
+    };
 } | null => {
     const chromeApi = (globalThis as { chrome?: unknown }).chrome as
         | {
@@ -64,6 +112,14 @@ const getExtensionStorage = (): {
                   local?: {
                       get: (keys: string[] | string, callback: (items: Record<string, unknown>) => void) => void;
                       set: (items: Record<string, unknown>, callback?: () => void) => void;
+                  };
+                  onChanged?: {
+                      addListener: (
+                          callback: (changes: Record<string, unknown>, areaName: string) => void
+                      ) => void;
+                      removeListener: (
+                          callback: (changes: Record<string, unknown>, areaName: string) => void
+                      ) => void;
                   };
               };
           }
@@ -73,7 +129,34 @@ const getExtensionStorage = (): {
         return null;
     }
 
-    return chromeApi.storage.local;
+    return {
+        get: chromeApi.storage.local.get.bind(chromeApi.storage.local),
+        set: chromeApi.storage.local.set.bind(chromeApi.storage.local),
+        onChanged: chromeApi.storage.onChanged,
+    };
+};
+
+const getExtensionRuntime = (): {
+    sendMessage: (message: unknown, responseCallback?: (response?: { ok?: boolean; error?: string }) => void) => void;
+    lastError?: { message?: string };
+} | null => {
+    const chromeApi = (globalThis as { chrome?: unknown }).chrome as
+        | {
+              runtime?: {
+                  sendMessage: (
+                      message: unknown,
+                      responseCallback?: (response?: { ok?: boolean; error?: string }) => void
+                  ) => void;
+                  lastError?: { message?: string };
+              };
+          }
+        | undefined;
+
+    if (!chromeApi?.runtime?.sendMessage) {
+        return null;
+    }
+
+    return chromeApi.runtime;
 };
 
 const sanitizePersistedState = (raw: unknown): PersistedChatState | null => {
@@ -81,7 +164,7 @@ const sanitizePersistedState = (raw: unknown): PersistedChatState | null => {
         return null;
     }
 
-    const candidate = raw as { statusMessage?: unknown; messages?: unknown };
+    const candidate = raw as { statusMessage?: unknown; messages?: unknown; pendingRequestId?: unknown };
     if (typeof candidate.statusMessage !== 'string' || !Array.isArray(candidate.messages)) {
         return null;
     }
@@ -106,10 +189,50 @@ const sanitizePersistedState = (raw: unknown): PersistedChatState | null => {
         .filter((message): message is ChatMessage => Boolean(message))
         .slice(-100);
 
+    const pendingRequestId = typeof candidate.pendingRequestId === 'string' ? candidate.pendingRequestId : null;
+
     return {
         statusMessage: candidate.statusMessage,
         messages: messages.length > 0 ? messages : DEFAULT_MESSAGES,
+        pendingRequestId,
     };
+};
+
+const sanitizeChatResults = (raw: unknown): Record<string, StoredChatResult> => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return {};
+    }
+
+    const source = raw as Record<string, unknown>;
+    const output: Record<string, StoredChatResult> = {};
+
+    for (const [key, value] of Object.entries(source)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            continue;
+        }
+
+        const item = value as {
+            requestId?: unknown;
+            ok?: unknown;
+            text?: unknown;
+            error?: unknown;
+            completedAt?: unknown;
+        };
+
+        if (typeof item.requestId !== 'string' || item.requestId !== key || typeof item.ok !== 'boolean') {
+            continue;
+        }
+
+        output[key] = {
+            requestId: item.requestId,
+            ok: item.ok,
+            text: typeof item.text === 'string' ? item.text : undefined,
+            error: typeof item.error === 'string' ? item.error : undefined,
+            completedAt: typeof item.completedAt === 'number' ? item.completedAt : 0,
+        };
+    }
+
+    return output;
 };
 
 const readPersistedChatState = async (): Promise<PersistedChatState | null> => {
@@ -134,6 +257,7 @@ const persistChatState = (state: PersistedChatState): void => {
     const toStore: PersistedChatState = {
         statusMessage: state.statusMessage,
         messages: state.messages.slice(-100),
+        pendingRequestId: state.pendingRequestId,
     };
 
     const storage = getExtensionStorage();
@@ -149,18 +273,60 @@ const persistChatState = (state: PersistedChatState): void => {
     }
 };
 
-interface CompanionFrameProps {
-    proxyUrl: string;
-}
+const readStoredChatResults = async (): Promise<Record<string, StoredChatResult>> => {
+    const storage = getExtensionStorage();
+    if (storage) {
+        return new Promise((resolve) => {
+            storage.get([CHAT_RESULTS_KEY], (items) => {
+                resolve(sanitizeChatResults(items?.[CHAT_RESULTS_KEY]));
+            });
+        });
+    }
 
-export const CompanionFrame: React.FC<CompanionFrameProps> = ({ proxyUrl }) => {
+    try {
+        const raw = localStorage.getItem(CHAT_RESULTS_LOCAL_FALLBACK_KEY);
+        return sanitizeChatResults(raw ? parseJson(raw) : null);
+    } catch {
+        return {};
+    }
+};
+
+const writeStoredChatResults = async (results: Record<string, StoredChatResult>): Promise<void> => {
+    const storage = getExtensionStorage();
+    if (storage) {
+        return new Promise((resolve) => {
+            storage.set({ [CHAT_RESULTS_KEY]: results }, () => resolve());
+        });
+    }
+
+    try {
+        localStorage.setItem(CHAT_RESULTS_LOCAL_FALLBACK_KEY, JSON.stringify(results));
+    } catch {
+        // Ignore persistence errors.
+    }
+};
+
+const consumeStoredChatResult = async (requestId: string): Promise<StoredChatResult | null> => {
+    const allResults = await readStoredChatResults();
+    const result = allResults[requestId];
+    if (!result) {
+        return null;
+    }
+
+    delete allResults[requestId];
+    await writeStoredChatResults(allResults);
+    return result;
+};
+
+export const CompanionFrame: React.FC<CompanionFrameProps> = ({ todos }) => {
     const [statusMessage, setStatusMessage] = useState<string>('Gemini proxy mode enabled.');
     const [input, setInput] = useState<string>('');
-    const [isSending, setIsSending] = useState<boolean>(false);
     const [messages, setMessages] = useState<ChatMessage[]>(DEFAULT_MESSAGES);
+    const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
     const [isHydrated, setIsHydrated] = useState<boolean>(false);
 
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
+    const isSending = pendingRequestId !== null;
 
     useEffect(() => {
         let cancelled = false;
@@ -174,6 +340,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({ proxyUrl }) => {
             if (persisted) {
                 setMessages(persisted.messages);
                 setStatusMessage(persisted.statusMessage);
+                setPendingRequestId(persisted.pendingRequestId);
             }
 
             setIsHydrated(true);
@@ -191,12 +358,79 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({ proxyUrl }) => {
             return;
         }
 
-        persistChatState({ messages, statusMessage });
-    }, [isHydrated, messages, statusMessage]);
+        persistChatState({ messages, statusMessage, pendingRequestId });
+    }, [isHydrated, messages, pendingRequestId, statusMessage]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, statusMessage]);
+
+    const applyCompletedResult = useCallback(
+        (result: StoredChatResult) => {
+            if (result.ok) {
+                const text = typeof result.text === 'string' && result.text.trim().length > 0
+                    ? result.text.trim()
+                    : 'Proxy returned an empty response.';
+                setMessages((prev) => [...prev, { id: createId(), role: 'assistant', text }]);
+                setStatusMessage('Gemini proxy connected.');
+                setPendingRequestId((current) => (current === result.requestId ? null : current));
+                return;
+            }
+
+            const error = new Error(result.error || 'Unknown background chat error');
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: createId(),
+                    role: 'assistant',
+                    text: formatErrorForChat(error, PROXY_URL),
+                },
+            ]);
+            setStatusMessage(`Gemini proxy error: ${error.message}`);
+            setPendingRequestId((current) => (current === result.requestId ? null : current));
+        },
+        []
+    );
+
+    const consumePendingResult = useCallback(
+        async (requestId: string) => {
+            const result = await consumeStoredChatResult(requestId);
+            if (!result) {
+                return;
+            }
+
+            applyCompletedResult(result);
+        },
+        [applyCompletedResult]
+    );
+
+    useEffect(() => {
+        if (!isHydrated || !pendingRequestId) {
+            return;
+        }
+
+        void consumePendingResult(pendingRequestId);
+    }, [consumePendingResult, isHydrated, pendingRequestId]);
+
+    useEffect(() => {
+        const storage = getExtensionStorage();
+        if (!storage?.onChanged) {
+            return;
+        }
+
+        const onStorageChanged = (changes: Record<string, unknown>, areaName: string) => {
+            if (areaName !== 'local' || !changes[CHAT_RESULTS_KEY] || !pendingRequestId) {
+                return;
+            }
+
+            void consumePendingResult(pendingRequestId);
+        };
+
+        storage.onChanged.addListener(onStorageChanged);
+        return () => {
+            storage.onChanged?.removeListener(onStorageChanged);
+        };
+    }, [consumePendingResult, pendingRequestId]);
 
     const statusLabel = useMemo(() => {
         if (isSending) {
@@ -212,22 +446,79 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({ proxyUrl }) => {
             return;
         }
 
+        const requestId = createId();
         const userMessage: ChatMessage = { id: createId(), role: 'user', text: prompt };
         const nextMessages = [...messages, userMessage];
         const history = nextMessages
             .filter((message) => message.text.trim().length > 0)
             .slice(-10)
             .map((message) => ({ role: message.role, text: message.text }));
+        const todoContext = buildTodoContext(todos);
 
         setMessages(nextMessages);
         setInput('');
-        setIsSending(true);
+        setPendingRequestId(requestId);
+        setStatusMessage('Gemini proxy: generating response...');
+
+        if (isHydrated) {
+            persistChatState({
+                messages: nextMessages,
+                statusMessage: 'Gemini proxy: generating response...',
+                pendingRequestId: requestId,
+            });
+        }
+
+        const runtime = getExtensionRuntime();
+        if (runtime?.sendMessage) {
+            runtime.sendMessage(
+                {
+                    type: CHAT_REQUEST_MESSAGE_TYPE,
+                    requestId,
+                    proxyUrl: PROXY_URL,
+                    messages: history,
+                    todoContext,
+                },
+                (response) => {
+                    const runtimeError = chrome.runtime?.lastError;
+                    if (runtimeError?.message) {
+                        const error = new Error(runtimeError.message);
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                id: createId(),
+                                role: 'assistant',
+                                text: formatErrorForChat(error, PROXY_URL),
+                            },
+                        ]);
+                        setStatusMessage(`Gemini proxy error: ${runtimeError.message}`);
+                        setPendingRequestId((current) => (current === requestId ? null : current));
+                        return;
+                    }
+
+                    if (response?.ok === false && response.error === 'Invalid chat request payload.') {
+                        const error = new Error(response.error);
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                id: createId(),
+                                role: 'assistant',
+                                text: formatErrorForChat(error, PROXY_URL),
+                            },
+                        ]);
+                        setStatusMessage(`Gemini proxy error: ${response.error}`);
+                        setPendingRequestId((current) => (current === requestId ? null : current));
+                    }
+                }
+            );
+
+            return;
+        }
 
         try {
-            const response = await fetch(proxyUrl, {
+            const response = await fetch(PROXY_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: history }),
+                body: JSON.stringify({ messages: history, todoContext }),
             });
 
             const rawText = await response.text();
@@ -238,8 +529,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({ proxyUrl }) => {
                     payload?.error ||
                     rawText.trim() ||
                     `Proxy request failed (${response.status} ${response.statusText})`;
-                const errorMessage = `HTTP ${response.status} ${response.statusText}: ${errorDetail}`;
-                throw new Error(errorMessage);
+                throw new Error(`HTTP ${response.status} ${response.statusText}: ${errorDetail}`);
             }
 
             const output =
@@ -258,20 +548,18 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({ proxyUrl }) => {
             ]);
             setStatusMessage('Gemini proxy connected.');
         } catch (error) {
-            console.error('Proxy prompt failed:', error);
-            const errorText = formatErrorForChat(error, proxyUrl);
             const message = error instanceof Error ? error.message : String(error);
-            setStatusMessage(`Gemini proxy error: ${message || 'Unknown proxy error'}`);
             setMessages((prev) => [
                 ...prev,
                 {
                     id: createId(),
                     role: 'assistant',
-                    text: errorText,
+                    text: formatErrorForChat(error, PROXY_URL),
                 },
             ]);
+            setStatusMessage(`Gemini proxy error: ${message || 'Unknown proxy error'}`);
         } finally {
-            setIsSending(false);
+            setPendingRequestId((current) => (current === requestId ? null : current));
         }
     };
 

@@ -34,7 +34,7 @@ The extension now uses a local backend proxy so your Gemini API key stays server
    npm run proxy
    ```
 4. Keep the proxy running at `http://localhost:8787`.
-5. In the extension settings, keep `AI proxy URL` as `http://localhost:8787/api/chat`.
+5. The extension is configured to use `https://todo-cl9u.onrender.com/api/chat` by default.
 
 ## Hosted Proxy (No Local Server)
 
@@ -48,10 +48,9 @@ If you do not want to keep a local server running, deploy `server/gemini-proxy.m
 3. Confirm the deployed endpoints work:
    - `GET https://your-domain/health`
    - `POST https://your-domain/api/chat`
-4. In extension settings, set `AI proxy URL` to:
-   - `https://your-domain/api/chat`
+4. If you deploy to a different domain, update the proxy URL constant in `src/components/CompanionFrame.tsx`.
 
-After that, the extension chat works without `npm run proxy` on your computer.
+After deployment, the extension chat works without `npm run proxy` on your computer.
 
 ## Building for Chrome
 
