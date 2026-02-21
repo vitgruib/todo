@@ -1,0 +1,22 @@
+{
+    "manifest_version": 3,
+    "name": "Todo AI",
+    "version": "1.0.0",
+    "description": "A smart todo list extension with drag and drop support.",
+    "permissions": [
+        "storage",
+        "alarms",
+        "tabs",
+        "offscreen"
+    ],
+    "host_permissions": [
+        "http://localhost:8787/*",
+        "https://*/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "index.html"
+    }
+}
