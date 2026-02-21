@@ -25,32 +25,20 @@ npm run dev
 
 ## AI Backend (Gemini Proxy)
 
-The extension now uses a local backend proxy so your Gemini API key stays server-side.
+The extension uses a local backend proxy so your Gemini API key stays server-side.
 
-1. Copy `server/.env.example` to `server/.env`.
-2. Set `GEMINI_API_KEY` in `server/.env`.
+1. Create `server/.env`.
+2. Add:
+   ```env
+   GEMINI_API_KEY=YOUR_KEY
+   GEMINI_MODEL=gemini-2.5-flash-lite
+   PORT=8787
+   ```
 3. Start proxy:
    ```bash
    npm run proxy
    ```
 4. Keep the proxy running at `http://localhost:8787`.
-5. The extension is configured to use `https://todo-cl9u.onrender.com/api/chat` by default.
-
-## Hosted Proxy (No Local Server)
-
-If you do not want to keep a local server running, deploy `server/gemini-proxy.mjs` to a cloud service.
-
-1. Deploy as a Node service (Render/Railway/Fly/any VPS).
-2. Set environment variables on the host:
-   - `GEMINI_API_KEY`
-   - `GEMINI_MODEL` (example: `gemini-2.5-flash-lite`)
-   - `PORT` (if your host requires it)
-3. Confirm the deployed endpoints work:
-   - `GET https://your-domain/health`
-   - `POST https://your-domain/api/chat`
-4. If you deploy to a different domain, update the proxy URL constant in `src/components/CompanionFrame.tsx`.
-
-After deployment, the extension chat works without `npm run proxy` on your computer.
 
 ## Building for Chrome
 

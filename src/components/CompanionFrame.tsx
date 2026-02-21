@@ -31,8 +31,8 @@ const CHAT_STORAGE_KEY = 'todo_ai_companion_chat_v1';
 const CHAT_RESULTS_KEY = 'todo-ai-chat-results';
 const CHAT_REQUEST_MESSAGE_TYPE = 'todo-ai-chat-request';
 const CHAT_RESULTS_LOCAL_FALLBACK_KEY = 'todo_ai_companion_chat_results_v1';
-const INITIAL_ASSISTANT_TEXT = 'AI is served by your hosted backend proxy.';
-const PROXY_URL = 'https://todo-cl9u.onrender.com/api/chat';
+const INITIAL_ASSISTANT_TEXT = 'AI is served by your local backend proxy.';
+const PROXY_URL = 'http://localhost:8787/api/chat';
 const MAX_TODO_CONTEXT_ITEMS = 60;
 
 const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -318,6 +318,32 @@ const consumeStoredChatResult = async (requestId: string): Promise<StoredChatRes
     return result;
 };
 
+const clearPersistedChatState = async (): Promise<void> => {
+    const storage = getExtensionStorage();
+    if (storage) {
+        return new Promise((resolve) => {
+            storage.set(
+                {
+                    [CHAT_STORAGE_KEY]: {
+                        statusMessage: 'Gemini proxy mode enabled.',
+                        messages: DEFAULT_MESSAGES,
+                        pendingRequestId: null,
+                    },
+                    [CHAT_RESULTS_KEY]: {},
+                },
+                () => resolve()
+            );
+        });
+    }
+
+    try {
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+        localStorage.setItem(CHAT_RESULTS_LOCAL_FALLBACK_KEY, JSON.stringify({}));
+    } catch {
+        // Ignore persistence errors.
+    }
+};
+
 export const CompanionFrame: React.FC<CompanionFrameProps> = ({ todos }) => {
     const [statusMessage, setStatusMessage] = useState<string>('Gemini proxy mode enabled.');
     const [input, setInput] = useState<string>('');
@@ -438,6 +464,21 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({ todos }) => {
         }
         return statusMessage;
     }, [isSending, statusMessage]);
+
+    const handleClearChat = async () => {
+        setInput('');
+        setPendingRequestId(null);
+        setMessages(DEFAULT_MESSAGES);
+        setStatusMessage('Gemini proxy mode enabled.');
+        await clearPersistedChatState();
+    };
+
+    const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            e.currentTarget.form?.requestSubmit();
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -567,7 +608,18 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({ todos }) => {
         <div className="companion-frame">
             <div className="companion-chat">
                 <div className="companion-chat-header">
-                    <h3>AI Companion</h3>
+                    <div className="companion-chat-header-row">
+                        <h3>AI Companion</h3>
+                        <button
+                            type="button"
+                            className="chat-clear-btn"
+                            onClick={() => {
+                                void handleClearChat();
+                            }}
+                        >
+                            Clear
+                        </button>
+                    </div>
                     <p>{statusLabel}</p>
                 </div>
 
@@ -588,6 +640,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({ todos }) => {
                     <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleTextareaKeyDown}
                         placeholder="Ask Todo AI..."
                         rows={2}
                         disabled={isSending}

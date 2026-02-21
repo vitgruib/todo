@@ -288,7 +288,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         try {
             const result = await runChatRequest(requestId, proxyUrl, messages, todoContext);
             await storeChatResult(result);
-            openOrFocusExtensionPage();
             sendResponse({ ok: true });
         } catch (error) {
             const messageText = error instanceof Error ? error.message : String(error);
@@ -298,7 +297,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                 error: messageText || 'Unknown background chat error',
                 completedAt: Date.now(),
             });
-            openOrFocusExtensionPage();
             sendResponse({ ok: false, error: messageText });
         }
     })();

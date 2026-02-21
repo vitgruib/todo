@@ -388,6 +388,13 @@ body.tab-mode {
   background: rgba(15, 23, 42, 0.55);
 }
 
+.companion-chat-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .companion-chat-header h3 {
   margin: 0;
   font-size: 0.95rem;
@@ -399,6 +406,23 @@ body.tab-mode {
   font-size: 0.74rem;
   color: var(--text-dim);
   line-height: 1.4;
+}
+
+.chat-clear-btn {
+  border: 1px solid var(--surface-hover);
+  background: rgba(51, 65, 85, 0.55);
+  color: var(--text-dim);
+  border-radius: 7px;
+  padding: 0.3rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chat-clear-btn:hover {
+  color: var(--text);
+  border-color: var(--primary);
 }
 
 .companion-chat-messages {
