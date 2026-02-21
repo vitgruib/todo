@@ -30,7 +30,7 @@ if (existsSync(envFile)) {
 
 const PORT = Number(process.env.PORT ?? '8787');
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY ?? '').trim();
-const GEMINI_MODEL = (process.env.GEMINI_MODEL ?? 'gemini-2.5-flash-lite').trim();
+const GEMINI_MODEL = (process.env.GEMINI_MODEL ?? 'gemma-3-12b-it').trim();
 const SYSTEM_PROMPT =
     'You are Todo AI. Keep responses concise and actionable. Help break tasks into practical steps when asked.';
 

@@ -31,7 +31,7 @@ The extension uses a local backend proxy so your Gemini API key stays server-sid
 2. Add:
    ```env
    GEMINI_API_KEY=YOUR_KEY
-   GEMINI_MODEL=gemini-2.5-flash-lite
+   GEMINI_MODEL=gemma-3-12b-it
    PORT=8787
    ```
 3. Start proxy:
