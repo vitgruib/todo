@@ -108,9 +108,50 @@ body.tab-mode {
   border-color: var(--primary);
 }
 
-.header-settings {
+.header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-menu-wrap {
+  position: relative;
+}
+
+.settings-btn {
+  border: 1px solid var(--surface-hover);
+  background: rgba(51, 65, 85, 0.55);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.settings-btn:hover {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: var(--primary);
+}
+
+.settings-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  width: min(330px, 85vw);
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid var(--surface-hover);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: var(--space-3);
+  z-index: 6;
+}
+
+.settings-menu-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--space-3);
   align-items: start;
 }
@@ -147,17 +188,6 @@ body.tab-mode {
   border-radius: 6px;
   font-family: inherit;
   min-height: 2rem;
-}
-
-.setting-wide {
-  grid-column: 1 / -1;
-}
-
-.setting-hint {
-  margin: 0;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  color: var(--text-dim);
 }
 
 .todo-section {
@@ -395,34 +425,60 @@ body.tab-mode {
   gap: var(--space-2);
 }
 
-.companion-chat-header h3 {
-  margin: 0;
-  font-size: 0.95rem;
-  color: var(--text);
+.chat-menu-wrap {
+  position: relative;
 }
 
-.companion-chat-header p {
-  margin: 0.3rem 0 0;
-  font-size: 0.74rem;
-  color: var(--text-dim);
-  line-height: 1.4;
-}
-
-.chat-clear-btn {
+.chat-menu-toggle {
   border: 1px solid var(--surface-hover);
   background: rgba(51, 65, 85, 0.55);
-  color: var(--text-dim);
+  color: var(--text);
   border-radius: 7px;
-  padding: 0.3rem 0.6rem;
+  padding: 0.2rem 0.55rem;
   font-family: inherit;
-  font-size: 0.72rem;
+  font-size: 0.95rem;
   font-weight: 600;
+  line-height: 1;
   cursor: pointer;
 }
 
-.chat-clear-btn:hover {
-  color: var(--text);
+.chat-menu-toggle:hover {
   border-color: var(--primary);
+}
+
+.chat-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  min-width: 130px;
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid var(--surface-hover);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+  padding: 0.3rem;
+  z-index: 4;
+}
+
+.chat-menu-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.chat-menu-item:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.2);
+}
+
+.chat-menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .companion-chat-messages {
@@ -453,6 +509,44 @@ body.tab-mode {
   background: rgba(99, 102, 241, 0.26);
   color: #eef2ff;
   align-self: flex-end;
+}
+
+.action-confirm-card {
+  align-self: stretch;
+  background: rgba(51, 65, 85, 0.72);
+  border: 1px solid var(--surface-hover);
+  border-radius: 10px;
+  padding: 0.6rem;
+}
+
+.action-confirm-card p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.action-confirm-buttons {
+  display: flex;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+}
+
+.action-confirm-buttons button {
+  border: 1px solid var(--surface-hover);
+  background: var(--primary);
+  color: #fff;
+  border-radius: 7px;
+  padding: 0.3rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.action-confirm-buttons button.secondary {
+  background: transparent;
+  color: var(--text-dim);
 }
 
 .companion-chat-input {
@@ -552,8 +646,15 @@ body.tab-mode {
     flex-direction: column;
   }
 
-  .header-settings {
-    grid-template-columns: 1fr;
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .settings-menu-panel {
+    left: 0;
+    right: auto;
+    width: min(360px, 94vw);
   }
 }
 

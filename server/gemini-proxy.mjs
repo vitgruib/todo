@@ -101,12 +101,82 @@ const normalizeTodoContext = (value) => {
     return '';
 };
 
-const buildSystemPrompt = (todoContext) => {
-    if (!todoContext) {
-        return SYSTEM_PROMPT;
+const normalizeAssistantConfig = (value) => {
+    if (!value || typeof value !== 'object') {
+        return {
+            personality: 'normal',
+            enableActionProposals: true,
+            requireConfirmation: true,
+            source: 'user',
+        };
     }
 
-    return `${SYSTEM_PROMPT}\n\nCurrent user todo context (JSON):\n${todoContext}`;
+    const candidate = value;
+    const personality = candidate.personality === 'endearing' || candidate.personality === 'caustic'
+        ? candidate.personality
+        : 'normal';
+
+    return {
+        personality,
+        enableActionProposals: Boolean(candidate.enableActionProposals),
+        requireConfirmation: Boolean(candidate.requireConfirmation),
+        source: typeof candidate.source === 'string' ? candidate.source : 'user',
+    };
+};
+
+const personalityInstructions = (personality) => {
+    if (personality === 'endearing') {
+        return 'Be extremely warm, affectionate, and supportive. Celebrate wins enthusiastically.';
+    }
+    if (personality === 'caustic') {
+        return 'Use sharp, caustic humor and harsh roasts while still giving useful, actionable guidance.';
+    }
+    return 'Use a neutral, practical tone.';
+};
+
+const actionProposalInstructions = `If the user asks you to edit their todo list, DO NOT claim the change is already done.
+Instead, return a JSON block in this exact shape inside a \`\`\`json fence:
+{
+  "message": "short explanation to user",
+  "actionProposal": {
+    "type": "add_todo" | "add_substep" | "complete_todo" | "complete_substep",
+    "reason": "why this action helps",
+    "todoId": "optional id",
+    "todoTitle": "optional exact title",
+    "title": "for add_todo",
+    "deadline": "optional YYYY-MM-DD",
+    "subtaskTitle": "for substep actions",
+    "stepId": "optional id"
+  }
+}
+If no list edit is requested, do not include actionProposal JSON.`;
+
+const buildSystemPrompt = (todoContext, assistantConfig) => {
+    const toneInstruction = personalityInstructions(assistantConfig.personality);
+    const sourceHint =
+        assistantConfig.source === 'completion'
+            ? 'The latest prompt is an event update about completed work. Respond briefly with acknowledgement.'
+            : assistantConfig.source === 'checkin'
+              ? 'The latest prompt asks you to do a check-in. Ask how the user is doing in one short line.'
+              : '';
+
+    const instructions = [
+        SYSTEM_PROMPT,
+        toneInstruction,
+        sourceHint,
+        assistantConfig.enableActionProposals ? actionProposalInstructions : '',
+        assistantConfig.requireConfirmation
+            ? 'Never execute list changes yourself. Always wait for explicit user confirmation first.'
+            : '',
+    ]
+        .filter(Boolean)
+        .join('\n\n');
+
+    if (!todoContext) {
+        return instructions;
+    }
+
+    return `${instructions}\n\nCurrent user todo context (JSON):\n${todoContext}`;
 };
 
 const server = createServer(async (req, res) => {
@@ -148,6 +218,7 @@ const server = createServer(async (req, res) => {
     try {
         const body = await readBody(req);
         const todoContext = normalizeTodoContext(body?.todoContext);
+        const assistantConfig = normalizeAssistantConfig(body?.assistantConfig);
         const inputMessages = Array.isArray(body?.messages) ? body.messages : [];
         const messages = inputMessages
             .filter((message) => typeof message?.text === 'string' && message.text.trim().length > 0)
@@ -171,7 +242,7 @@ const server = createServer(async (req, res) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 system_instruction: {
-                    parts: [{ text: buildSystemPrompt(todoContext) }],
+                    parts: [{ text: buildSystemPrompt(todoContext, assistantConfig) }],
                 },
                 contents: messages,
             }),

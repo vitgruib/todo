@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Todo } from '../types';
 
-const STORAGE_KEY = 'todo-ai-data';
+const STORAGE_KEY = 'todo-ai-data-v2';
 
 export const useTodos = () => {
     const [todos, setTodos] = useState<Todo[]>([]);
