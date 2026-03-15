@@ -1,6 +1,6 @@
 # Todo AI Extension
 
-A smart todo list extension for Chrome/Edge with drag-and-drop support and a Gemini-backed AI companion.
+A smart todo list extension for Chrome/Edge with drag-and-drop support and a Gemma-backed AI companion.
 
 ## Prerequisites
 
@@ -23,15 +23,15 @@ To start the development server (for web view):
 npm run dev
 ```
 
-## AI Backend (Gemini Proxy)
+## AI Backend (Gemma Proxy)
 
-The extension uses a local backend proxy so your Gemini API key stays server-side.
+The extension uses a local backend proxy so your API key stays server-side. Default model is Gemma 2 9B.
 
 1. Create `server/.env`.
 2. Add:
    ```env
    GEMINI_API_KEY=YOUR_KEY
-   GEMINI_MODEL=gemma-3-12b-it
+   GEMINI_MODEL=gemma-2-9b-it
    PORT=8787
    ```
 3. Start proxy:
@@ -70,5 +70,5 @@ The extension uses a local backend proxy so your Gemini API key stays server-sid
 -   **Sub-steps**: Break down tasks into smaller steps.
 -   **Drag and Drop**: Reorder your priorities.
 -   **Persistence**: Data is saved automatically.
--   **Gemini AI Chat**: Companion chat powered by backend Gemini proxy.
+-   **Gemma AI Chat**: Companion chat powered by backend Gemma proxy.
 -   **Dark Mode UI**: Clean, modern aesthetic.

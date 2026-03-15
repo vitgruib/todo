@@ -8,8 +8,9 @@ interface TodoListProps {
     onReorder: (result: any) => void;
     onToggle: (id: string) => void;
     onDelete: (id: string) => void;
-    onAddStep: (id: string, title: string) => void;
-    onToggleStep: (todoId: string, stepId: string) => void;
+    onUpdateTodo: (id: string, updates: Partial<Todo>) => void;
+    activeTimerTaskId: string | null;
+    onStartTimer: (taskId: string, taskTitle: string, timerMinutes: number, checkInCount: number) => void;
 }
 
 export const TodoList: React.FC<TodoListProps> = ({
@@ -17,8 +18,9 @@ export const TodoList: React.FC<TodoListProps> = ({
     onReorder,
     onToggle,
     onDelete,
-    onAddStep,
-    onToggleStep,
+    onUpdateTodo,
+    activeTimerTaskId,
+    onStartTimer,
 }) => {
     const getSectionId = (todo: Todo) => {
         if (!todo.deadline) return 'someday';
@@ -75,10 +77,12 @@ export const TodoList: React.FC<TodoListProps> = ({
                                             key={todo.id}
                                             todo={todo}
                                             index={index}
+                                            sectionId={id}
                                             onToggle={onToggle}
                                             onDelete={onDelete}
-                                            onAddStep={onAddStep}
-                                            onToggleStep={onToggleStep}
+                                            onUpdateTodo={onUpdateTodo}
+                                            activeTimerTaskId={activeTimerTaskId}
+                                            onStartTimer={onStartTimer}
                                         />
                                     ))}
                                     {provided.placeholder}

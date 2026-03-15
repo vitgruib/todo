@@ -26,25 +26,25 @@ interface PersistedChatState {
 interface CompanionFrameProps {
     todos: Todo[];
     personality: 'normal' | 'endearing' | 'caustic';
+    focusBumpAfterHours: number;
     onAddTodo: (title: string, deadline?: string) => void;
-    onAddStep: (todoId: string, stepTitle: string) => void;
-    onToggleTodo: (todoId: string) => void;
-    onToggleStep: (todoId: string, stepId: string) => void;
+    onToggleTodo: (id: string) => void;
+    onUpdateTodo: (id: string, updates: Partial<Todo>) => void;
 }
 
 const CHAT_STORAGE_KEY = 'todo_ai_companion_chat_v2';
 const CHAT_RESULTS_KEY = 'todo-ai-chat-results-v2';
+const TASK_CHECKIN_REQUEST_KEY = 'todo-ai-task-checkin-request-v1';
 const CHAT_REQUEST_MESSAGE_TYPE = 'todo-ai-chat-request';
 const CHAT_CANCEL_MESSAGE_TYPE = 'todo-ai-chat-cancel';
 const CHAT_RESULTS_LOCAL_FALLBACK_KEY = 'todo_ai_companion_chat_results_v2';
-const CHECKIN_REQUEST_KEY = 'todo-ai-checkin-request-v1';
 const COMPLETION_REACTION_COOLDOWN_MS = 7_000;
 const INITIAL_ASSISTANT_TEXT =
-    "Hi, I'm Todo, your companion. I can help you prioritize tasks, break work into steps, and keep momentum.";
+    "Hi, I'm Todo, your companion. I can help you prioritize tasks and keep momentum.";
 const PROXY_URL = 'https://todo-cl9u.onrender.com/api/chat';
 const MAX_TODO_CONTEXT_ITEMS = 60;
 
-type ActionType = 'add_todo' | 'add_substep' | 'complete_todo' | 'complete_substep';
+type ActionType = 'add_todo' | 'complete_todo' | 'delay_todo';
 
 interface ActionProposal {
     type: ActionType;
@@ -53,8 +53,6 @@ interface ActionProposal {
     todoTitle?: string;
     title?: string;
     deadline?: string;
-    subtaskTitle?: string;
-    stepId?: string;
 }
 
 interface ParsedAssistantPayload {
@@ -87,7 +85,7 @@ const normalizeActionProposal = (value: unknown): ActionProposal | null => {
     }
     const candidate = value as Record<string, unknown>;
     const type = candidate.type;
-    if (type !== 'add_todo' && type !== 'add_substep' && type !== 'complete_todo' && type !== 'complete_substep') {
+    if (type !== 'add_todo' && type !== 'complete_todo' && type !== 'delay_todo') {
         return null;
     }
     return {
@@ -97,8 +95,6 @@ const normalizeActionProposal = (value: unknown): ActionProposal | null => {
         todoTitle: typeof candidate.todoTitle === 'string' ? candidate.todoTitle : undefined,
         title: typeof candidate.title === 'string' ? candidate.title : undefined,
         deadline: typeof candidate.deadline === 'string' ? candidate.deadline : undefined,
-        subtaskTitle: typeof candidate.subtaskTitle === 'string' ? candidate.subtaskTitle : undefined,
-        stepId: typeof candidate.stepId === 'string' ? candidate.stepId : undefined,
     };
 };
 
@@ -133,6 +129,33 @@ const toLocalDateOnly = (date: Date) => {
     return `${year}-${month}-${day}`;
 };
 
+/** Hard-coded, clear description for each action type shown when asking the user to confirm. */
+function getActionConfirmDescription(
+    proposal: ActionProposal,
+    resolveTodo: (p: ActionProposal) => Todo | null
+): string {
+    switch (proposal.type) {
+        case 'add_todo':
+            if (!proposal.title) return 'Add a new task (details missing).';
+            return proposal.deadline
+                ? `Add a new task: "${proposal.title}" with deadline ${proposal.deadline}.`
+                : `Add a new task: "${proposal.title}".`;
+        case 'complete_todo': {
+            const todo = resolveTodo(proposal);
+            return todo ? `Mark task "${todo.title}" as complete.` : 'Mark a task as complete (task not found).';
+        }
+        case 'delay_todo': {
+            if (!proposal.deadline) return 'Move a task to another date (date missing).';
+            const todo = resolveTodo(proposal);
+            return todo
+                ? `Move task "${todo.title}" to ${proposal.deadline}.`
+                : `Move a task to ${proposal.deadline} (task not found).`;
+        }
+        default:
+            return 'Apply this change to your list.';
+    }
+}
+
 const getTodoCategory = (deadline?: string): 'focus' | 'up-next' | 'someday' => {
     if (!deadline) {
         return 'someday';
@@ -161,16 +184,15 @@ const buildTodoContext = (todos: Todo[], personality: 'normal' | 'endearing' | '
 
     const items = todos.slice(0, MAX_TODO_CONTEXT_ITEMS).map((todo) => {
         const category = getTodoCategory(todo.deadline);
-        return {
+        const item: { title: string; completed: boolean; category: 'focus' | 'up-next' | 'someday'; deadline?: string } = {
             title: todo.title,
             completed: todo.completed,
-            deadline: todo.deadline ?? null,
             category,
-            subtasks: todo.steps.map((step) => ({
-                title: step.title,
-                completed: step.completed,
-            })),
         };
+        if (category === 'focus' && typeof todo.deadline === 'string' && todo.deadline.trim().length > 0) {
+            item.deadline = todo.deadline.trim();
+        }
+        return item;
     });
 
     const categoryCounts = items.reduce(
@@ -193,7 +215,7 @@ const buildTodoContext = (todos: Todo[], personality: 'normal' | 'endearing' | '
 };
 
 const formatErrorForChat = (error: unknown, proxyUrl: string): string => {
-    const lines: string[] = ['Gemini request failed.', `endpoint: ${proxyUrl}`, `time: ${new Date().toISOString()}`];
+    const lines: string[] = ['Gemma request failed.', `endpoint: ${proxyUrl}`, `time: ${new Date().toISOString()}`];
 
     if (typeof navigator !== 'undefined') {
         lines.push(`navigator.onLine: ${String(navigator.onLine)}`);
@@ -446,7 +468,7 @@ const clearPersistedChatState = async (): Promise<void> => {
             storage.set(
                 {
                     [CHAT_STORAGE_KEY]: {
-                        statusMessage: 'Gemini proxy mode enabled.',
+                        statusMessage: 'Gemma proxy mode enabled.',
                         messages: DEFAULT_MESSAGES,
                         pendingRequestId: null,
                     },
@@ -468,12 +490,12 @@ const clearPersistedChatState = async (): Promise<void> => {
 export const CompanionFrame: React.FC<CompanionFrameProps> = ({
     todos,
     personality,
+    focusBumpAfterHours,
     onAddTodo,
-    onAddStep,
     onToggleTodo,
-    onToggleStep,
+    onUpdateTodo,
 }) => {
-    const [statusMessage, setStatusMessage] = useState<string>('Gemini proxy mode enabled.');
+    const [statusMessage, setStatusMessage] = useState<string>('Gemma proxy mode enabled.');
     const [input, setInput] = useState<string>('');
     const [messages, setMessages] = useState<ChatMessage[]>(DEFAULT_MESSAGES);
     const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
@@ -483,9 +505,10 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
 
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const menuRef = useRef<HTMLDivElement | null>(null);
-    const completionSnapshotRef = useRef<Map<string, { completed: boolean; steps: Map<string, boolean> }>>(new Map());
+    const completionSnapshotRef = useRef<Map<string, boolean>>(new Map());
     const lastCompletionReactionAtRef = useRef<number>(0);
-    const lastCheckinIdRef = useRef<number>(0);
+    const lastBumpCheckAtRef = useRef<number>(0);
+    const BUMP_CHECK_COOLDOWN_MS = 30_000;
     const isSending = pendingRequestId !== null;
 
     useEffect(() => {
@@ -556,7 +579,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
                 const parsed = parseAssistantTextAndAction(rawText);
                 setMessages((prev) => [...prev, { id: createId(), role: 'assistant', text: parsed.text }]);
                 setPendingActionProposal(parsed.actionProposal);
-                setStatusMessage('Gemini proxy connected.');
+                setStatusMessage('Gemma proxy connected.');
                 setPendingRequestId((current) => (current === result.requestId ? null : current));
                 return;
             }
@@ -570,7 +593,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
                     text: formatErrorForChat(error, PROXY_URL),
                 },
             ]);
-            setStatusMessage(`Gemini proxy error: ${error.message}`);
+            setStatusMessage(`Gemma proxy error: ${error.message}`);
             setPendingRequestId((current) => (current === result.requestId ? null : current));
         },
         []
@@ -595,18 +618,6 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
 
         void consumePendingResult(pendingRequestId);
     }, [consumePendingResult, isHydrated, pendingRequestId]);
-
-    useEffect(() => {
-        const storage = getExtensionStorage();
-        if (!storage) {
-            return;
-        }
-
-        storage.get([CHECKIN_REQUEST_KEY], (items) => {
-            const latest = typeof items?.[CHECKIN_REQUEST_KEY] === 'number' ? items[CHECKIN_REQUEST_KEY] : 0;
-            lastCheckinIdRef.current = latest;
-        });
-    }, []);
 
     useEffect(() => {
         const storage = getExtensionStorage();
@@ -641,7 +652,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
         setPendingRequestId(null);
         setPendingActionProposal(null);
         setMessages(DEFAULT_MESSAGES);
-        setStatusMessage('Gemini proxy mode enabled.');
+        setStatusMessage('Gemma proxy mode enabled.');
         await clearPersistedChatState();
     };
 
@@ -715,11 +726,11 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
             }
 
             setPendingRequestId(requestId);
-            setStatusMessage('Gemini proxy: generating response...');
+            setStatusMessage('Gemma proxy: generating response...');
             if (isHydrated) {
                 persistChatState({
                     messages: visibleMessages,
-                    statusMessage: 'Gemini proxy: generating response...',
+                    statusMessage: 'Gemma proxy: generating response...',
                     pendingRequestId: requestId,
                 });
             }
@@ -734,6 +745,11 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
                         messages: history,
                         todoContext,
                         assistantConfig,
+                        chatState: {
+                            messages: visibleMessages,
+                            statusMessage: 'Gemma proxy: generating response...',
+                            pendingRequestId: requestId,
+                        },
                     },
                     (response) => {
                         const runtimeError = chrome.runtime?.lastError;
@@ -743,7 +759,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
                                 ...prev,
                                 { id: createId(), role: 'assistant', text: formatErrorForChat(error, PROXY_URL) },
                             ]);
-                            setStatusMessage(`Gemini proxy error: ${runtimeError.message}`);
+                            setStatusMessage(`Gemma proxy error: ${runtimeError.message}`);
                             setPendingRequestId((current) => (current === requestId ? null : current));
                             return;
                         }
@@ -754,7 +770,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
                                 ...prev,
                                 { id: createId(), role: 'assistant', text: formatErrorForChat(error, PROXY_URL) },
                             ]);
-                            setStatusMessage(`Gemini proxy error: ${response.error}`);
+                            setStatusMessage(`Gemma proxy error: ${response.error}`);
                             setPendingRequestId((current) => (current === requestId ? null : current));
                         }
                     }
@@ -788,14 +804,14 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
                 const parsed = parseAssistantTextAndAction(output || 'Proxy returned an empty response.');
                 setMessages((prev) => [...prev, { id: createId(), role: 'assistant', text: parsed.text }]);
                 setPendingActionProposal(parsed.actionProposal);
-                setStatusMessage('Gemini proxy connected.');
+                setStatusMessage('Gemma proxy connected.');
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 setMessages((prev) => [
                     ...prev,
                     { id: createId(), role: 'assistant', text: formatErrorForChat(error, PROXY_URL) },
                 ]);
-                setStatusMessage(`Gemini proxy error: ${message || 'Unknown proxy error'}`);
+                setStatusMessage(`Gemma proxy error: ${message || 'Unknown proxy error'}`);
             } finally {
                 setPendingRequestId((current) => (current === requestId ? null : current));
             }
@@ -836,14 +852,6 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
         if (proposal.type === 'add_todo' && proposal.title) {
             onAddTodo(proposal.title, proposal.deadline);
             resultText = `Added todo: "${proposal.title}".`;
-        } else if (proposal.type === 'add_substep' && proposal.subtaskTitle) {
-            const todo = resolveTodo(proposal);
-            if (todo) {
-                onAddStep(todo.id, proposal.subtaskTitle);
-                resultText = `Added substep "${proposal.subtaskTitle}" to "${todo.title}".`;
-            } else {
-                resultText = 'I could not find the target todo for that substep.';
-            }
         } else if (proposal.type === 'complete_todo') {
             const todo = resolveTodo(proposal);
             if (todo) {
@@ -854,32 +862,25 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
             } else {
                 resultText = 'I could not find the target todo to complete.';
             }
-        } else if (proposal.type === 'complete_substep') {
+        } else if (proposal.type === 'delay_todo' && proposal.deadline) {
             const todo = resolveTodo(proposal);
             if (todo) {
-                const step = proposal.stepId
-                    ? todo.steps.find((item) => item.id === proposal.stepId)
-                    : proposal.subtaskTitle
-                      ? todo.steps.find(
-                            (item) => item.title.trim().toLowerCase() === proposal.subtaskTitle?.trim().toLowerCase()
-                        )
-                      : null;
-                if (step) {
-                    if (!step.completed) {
-                        onToggleStep(todo.id, step.id);
-                    }
-                    resultText = `Marked substep "${step.title}" on "${todo.title}" as completed.`;
-                } else {
-                    resultText = 'I could not find that substep.';
-                }
+                const todayStr = toLocalDateOnly(new Date());
+                const isMovingToToday = proposal.deadline <= todayStr;
+                onUpdateTodo(todo.id, {
+                    deadline: proposal.deadline,
+                    addedToFocusAt: isMovingToToday ? Date.now() : undefined,
+                    ...(isMovingToToday && { bumpSentAt: undefined }),
+                });
+                resultText = `Moved "${todo.title}" to ${proposal.deadline}.`;
             } else {
-                resultText = 'I could not find the target todo for that substep.';
+                resultText = 'I could not find the task to delay.';
             }
         }
 
         setPendingActionProposal(null);
         setMessages((prev) => [...prev, { id: createId(), role: 'assistant', text: resultText }]);
-    }, [onAddStep, onAddTodo, onToggleStep, onToggleTodo, pendingActionProposal, resolveTodo]);
+    }, [onAddTodo, onToggleTodo, onUpdateTodo, pendingActionProposal, resolveTodo]);
 
     const dismissActionProposal = useCallback(() => {
         setPendingActionProposal(null);
@@ -896,23 +897,13 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
 
         const now = Date.now();
         const previousSnapshot = completionSnapshotRef.current;
-        const nextSnapshot = new Map<string, { completed: boolean; steps: Map<string, boolean> }>();
+        const nextSnapshot = new Map<string, boolean>();
         const newlyCompleted: string[] = [];
 
         for (const todo of todos) {
-            const previous = previousSnapshot.get(todo.id);
-            const stepsMap = new Map<string, boolean>();
-            for (const step of todo.steps) {
-                stepsMap.set(step.id, step.completed);
-                const prevCompleted = previous?.steps.get(step.id) ?? false;
-                if (step.completed && !prevCompleted) {
-                    newlyCompleted.push(`Substep complete: "${step.title}" in "${todo.title}"`);
-                }
-            }
-
-            nextSnapshot.set(todo.id, { completed: todo.completed, steps: stepsMap });
-            const prevTodoCompleted = previous?.completed ?? false;
-            if (todo.completed && !prevTodoCompleted) {
+            const prevCompleted = previousSnapshot.get(todo.id) ?? false;
+            nextSnapshot.set(todo.id, todo.completed);
+            if (todo.completed && !prevCompleted) {
                 newlyCompleted.push(`Todo complete: "${todo.title}"`);
             }
         }
@@ -937,35 +928,60 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
         );
     }, [isHydrated, isSending, requestAiResponse, todos]);
 
+    // Bump when a focus task has been in focus longer than focusBumpAfterHours
     useEffect(() => {
-        const storage = getExtensionStorage();
-        if (!storage?.onChanged) {
+        if (!isHydrated || isSending || focusBumpAfterHours < 1) {
             return;
         }
+        const now = Date.now();
+        if (now - lastBumpCheckAtRef.current < BUMP_CHECK_COOLDOWN_MS) {
+            return;
+        }
+        lastBumpCheckAtRef.current = now;
+        const ms = focusBumpAfterHours * 3600000;
+        const focusTodos = todos.filter((t) => {
+            if (!t.deadline) return false;
+            const d = new Date(t.deadline + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            return diff <= 0;
+        });
+        const needsBump = focusTodos.find(
+            (t) =>
+                t.addedToFocusAt != null &&
+                now - t.addedToFocusAt >= ms &&
+                (t.bumpSentAt == null || now - t.bumpSentAt >= ms)
+        );
+        if (!needsBump) {
+            return;
+        }
+        onUpdateTodo(needsBump.id, { bumpSentAt: now });
+        const prompt = `The user has had the task "${needsBump.title}" in their Focus list for over ${focusBumpAfterHours} hour(s). Send a single short, friendly nudge to check in on that task (as the assistant). Do not ask them to type a reply unless it feels natural.`;
+        void requestAiResponse(prompt, { echoUser: false, source: 'checkin' });
+    }, [isHydrated, isSending, todos, focusBumpAfterHours, requestAiResponse, onUpdateTodo]);
 
-        const onCheckinChanged = (changes: Record<string, unknown>, areaName: string) => {
-            if (areaName !== 'local' || !changes[CHECKIN_REQUEST_KEY]) {
+    // When tab opens from a task timer check-in alarm, send a check-in for that task
+    useEffect(() => {
+        if (!isHydrated || isSending) {
+            return;
+        }
+        const storage = getExtensionStorage();
+        if (!storage) {
+            return;
+        }
+        storage.get([TASK_CHECKIN_REQUEST_KEY], (items: Record<string, unknown>) => {
+            const data = items?.[TASK_CHECKIN_REQUEST_KEY];
+            if (!data || typeof data !== 'object' || !(data as { taskId?: string }).taskId) {
                 return;
             }
-
-            const change = changes[CHECKIN_REQUEST_KEY] as { newValue?: unknown };
-            const newValue = typeof change?.newValue === 'number' ? change.newValue : 0;
-            if (newValue <= lastCheckinIdRef.current || isSending) {
-                return;
-            }
-
-            lastCheckinIdRef.current = newValue;
-            void requestAiResponse(
-                'Do a short check-in with the user and ask how they are doing right now.',
-                { echoUser: false, source: 'checkin' }
-            );
-        };
-
-        storage.onChanged.addListener(onCheckinChanged);
-        return () => {
-            storage.onChanged?.removeListener(onCheckinChanged);
-        };
-    }, [isSending, requestAiResponse]);
+            const payload = data as { taskId: string; taskTitle?: string };
+            storage.set({ [TASK_CHECKIN_REQUEST_KEY]: null });
+            const taskTitle = payload.taskTitle || 'your task';
+            const prompt = `You are doing a scheduled check-in for the task "${taskTitle}". Send a single short, friendly message (as the assistant) to check in on this task.`;
+            void requestAiResponse(prompt, { echoUser: false, source: 'checkin' });
+        });
+    }, [isHydrated, isSending, requestAiResponse]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -977,8 +993,9 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
         await requestAiResponse(prompt, { echoUser: true, source: 'user' });
     };
 
+    const hasMessages = messages.length > 1;
     return (
-        <div className="companion-frame">
+        <div className={`companion-frame ${hasMessages ? 'companion-frame--has-messages' : ''}`}>
             <div className="companion-chat">
                 <div className="companion-chat-header">
                     <div className="companion-chat-header-row">
@@ -1032,10 +1049,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
                     ))}
                     {pendingActionProposal && (
                         <div className="action-confirm-card">
-                            <p>
-                                {pendingActionProposal.reason ||
-                                    'I can update your list for this request. Confirm before I make changes.'}
-                            </p>
+                            <p>{getActionConfirmDescription(pendingActionProposal, resolveTodo)}</p>
                             <div className="action-confirm-buttons">
                                 <button type="button" onClick={applyActionProposal}>
                                     Confirm
@@ -1046,7 +1060,15 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
                             </div>
                         </div>
                     )}
-                    {isSending && <div className="chat-bubble assistant">Thinking...</div>}
+                    {isSending && (
+                        <div
+                            className="chat-bubble assistant chat-thinking"
+                            title="Your message was sent to the proxy server. The server is running the Gemma model to generate a reply. This usually takes a few seconds."
+                        >
+                            <strong>Thinking…</strong>
+                            <p className="chat-thinking-detail">Request is with the server; Gemma is generating your reply.</p>
+                        </div>
+                    )}
                     <div ref={messagesEndRef} />
                 </div>
 
@@ -1055,7 +1077,7 @@ export const CompanionFrame: React.FC<CompanionFrameProps> = ({
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleTextareaKeyDown}
-                        placeholder="Ask Todo AI..."
+                        placeholder={isSending ? 'Waiting for reply…' : 'Ask Todo AI...'}
                         rows={2}
                         disabled={isSending}
                     />

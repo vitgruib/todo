@@ -7,19 +7,36 @@ const STORAGE_KEY = 'todo-ai-data-v2';
 export const useTodos = () => {
     const [todos, setTodos] = useState<Todo[]>([]);
 
-    // Load from storage on mount
+    // Helper: is this todo in Focus (today or overdue)?
+    const isFocusSection = (t: Todo) => {
+        if (!t.deadline) return false;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const d = new Date(t.deadline + 'T00:00:00');
+        const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return diff <= 0;
+    };
+
+    // Load from storage on mount; backfill addedToFocusAt for focus tasks that don't have it
     useEffect(() => {
+        const normalize = (loaded: Todo[]) => {
+            return loaded.map((t) => {
+                if (isFocusSection(t) && t.addedToFocusAt == null) {
+                    return { ...t, addedToFocusAt: t.createdAt };
+                }
+                return t;
+            });
+        };
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             chrome.storage.local.get([STORAGE_KEY], (result) => {
                 if (result[STORAGE_KEY]) {
-                    setTodos(result[STORAGE_KEY]);
+                    setTodos(normalize(result[STORAGE_KEY]));
                 }
             });
         } else {
-            // Fallback for local dev
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
-                setTodos(JSON.parse(saved));
+                setTodos(normalize(JSON.parse(saved)));
             }
         }
     }, []);
@@ -35,13 +52,17 @@ export const useTodos = () => {
     }, [todos]);
 
     const addTodo = (title: string, deadline?: string) => {
+        const now = Date.now();
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
         const newTodo: Todo = {
             id: uuidv4(),
             title,
             completed: false,
             deadline,
             steps: [],
-            createdAt: Date.now(),
+            createdAt: now,
+            addedToFocusAt: deadline && deadline <= todayStr ? now : undefined,
         };
         setTodos((prev) => [newTodo, ...prev]);
     };
@@ -50,46 +71,20 @@ export const useTodos = () => {
         setTodos((prev) => prev.filter((t) => t.id !== id));
     };
 
-    const toggleTodo = (id: string) => {
-        setTodos((prev) =>
-            prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
-        );
+    const toggleTodo = (id: string, options?: { deleteIfCompleted?: boolean }) => {
+        setTodos((prev) => {
+            const next = prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t));
+            const updated = next.find((t) => t.id === id);
+            if (updated?.completed && options?.deleteIfCompleted) {
+                return next.filter((t) => t.id !== id);
+            }
+            return next;
+        });
     };
 
     const updateTodo = (id: string, updates: Partial<Todo>) => {
         setTodos((prev) =>
             prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
-        );
-    };
-
-    const addStep = (todoId: string, stepTitle: string) => {
-        setTodos((prev) =>
-            prev.map((t) =>
-                t.id === todoId
-                    ? {
-                        ...t,
-                        steps: [
-                            ...t.steps,
-                            { id: uuidv4(), title: stepTitle, completed: false },
-                        ],
-                    }
-                    : t
-            )
-        );
-    };
-
-    const toggleStep = (todoId: string, stepId: string) => {
-        setTodos((prev) =>
-            prev.map((t) =>
-                t.id === todoId
-                    ? {
-                        ...t,
-                        steps: t.steps.map((s) =>
-                            s.id === stepId ? { ...s, completed: !s.completed } : s
-                        ),
-                    }
-                    : t
-            )
         );
     };
 
@@ -141,9 +136,6 @@ export const useTodos = () => {
 
             const [movedTodo] = newTodos.splice(movedTodoIndex, 1);
 
-            // Update the deadline
-            const updatedTodo = { ...movedTodo, deadline: newDeadline };
-
             const getSectionId = (t: Todo) => {
                 if (!t.deadline) return 'someday';
                 const d = new Date(t.deadline + 'T00:00:00');
@@ -153,6 +145,14 @@ export const useTodos = () => {
                 if (diff <= 0) return 'focus';
                 if (diff === 1) return 'up-next';
                 return 'someday';
+            };
+            const now = Date.now();
+            const wasFocus = getSectionId(movedTodo) === 'focus';
+            const willBeFocus = destination.droppableId === 'focus';
+            const updatedTodo: Todo = {
+                ...movedTodo,
+                deadline: newDeadline,
+                addedToFocusAt: willBeFocus ? now : wasFocus ? undefined : movedTodo.addedToFocusAt,
             };
 
             const sections: Record<string, Todo[]> = {
@@ -188,8 +188,6 @@ export const useTodos = () => {
         deleteTodo,
         toggleTodo,
         updateTodo,
-        addStep,
-        toggleStep,
         reorderTodos,
     };
 };

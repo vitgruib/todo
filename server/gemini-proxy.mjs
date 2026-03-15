@@ -30,9 +30,13 @@ if (existsSync(envFile)) {
 
 const PORT = Number(process.env.PORT ?? '8787');
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY ?? '').trim();
-const GEMINI_MODEL = (process.env.GEMINI_MODEL ?? 'gemma-3-12b-it').trim();
+const DEFAULT_GEMMA_MODEL = 'gemma-2-9b-it';
+let GEMINI_MODEL = (process.env.GEMINI_MODEL ?? DEFAULT_GEMMA_MODEL).trim();
+if (GEMINI_MODEL.toLowerCase().startsWith('gemini-')) {
+    GEMINI_MODEL = DEFAULT_GEMMA_MODEL;
+}
 const SYSTEM_PROMPT =
-    'You are Todo AI. Keep responses concise and actionable. Help break tasks into practical steps when asked.';
+    'You are Todo AI, powered by Gemma. Do not claim to be Gemini or any other model. Talk like a real person: use contractions, short sentences, and a warm but efficient tone. Keep responses concise and actionable. Help break tasks into practical steps when asked.';
 
 if (!GEMINI_API_KEY) {
     console.error('Missing GEMINI_API_KEY.');
@@ -131,24 +135,24 @@ const personalityInstructions = (personality) => {
     if (personality === 'caustic') {
         return 'Use sharp, caustic humor and harsh roasts while still giving useful, actionable guidance.';
     }
-    return 'Use a neutral, practical tone.';
+    return 'Be friendly and practical. Sound like a helpful human—use natural language, a bit of warmth, and avoid stiff or corporate phrasing.';
 };
 
 const actionProposalInstructions = `If the user asks you to edit their todo list, DO NOT claim the change is already done.
-Instead, return a JSON block in this exact shape inside a \`\`\`json fence:
+Your "message" must describe only what will happen when the user clicks Apply (e.g. "I'll mark that complete" for complete_todo, "I'll move it to tomorrow" for delay_todo). Never say you have already moved, added, or completed something—the change happens only after they confirm.
+Return a JSON block in this exact shape inside a \`\`\`json fence:
 {
-  "message": "short explanation to user",
+  "message": "what will happen when they click Apply (must match the action type)",
   "actionProposal": {
-    "type": "add_todo" | "add_substep" | "complete_todo" | "complete_substep",
+    "type": "add_todo" | "complete_todo" | "delay_todo",
     "reason": "why this action helps",
     "todoId": "optional id",
-    "todoTitle": "optional exact title",
+    "todoTitle": "optional exact title (match list exactly)",
     "title": "for add_todo",
-    "deadline": "optional YYYY-MM-DD",
-    "subtaskTitle": "for substep actions",
-    "stepId": "optional id"
+    "deadline": "YYYY-MM-DD (required for add_todo optional date, required for delay_todo)"
   }
 }
+Use "delay_todo" when the user wants to postpone or reschedule a task: set "type" to "delay_todo", include "todoId" or "todoTitle" to identify the task, and "deadline" to the new date (YYYY-MM-DD).
 If no list edit is requested, do not include actionProposal JSON.`;
 
 const buildSystemPrompt = (todoContext, assistantConfig) => {
@@ -250,13 +254,13 @@ const server = createServer(async (req, res) => {
 
         const payload = await geminiResponse.json().catch(() => null);
         if (!geminiResponse.ok) {
-            const errorMessage = payload?.error?.message || `Gemini API failed (${geminiResponse.status})`;
+            const errorMessage = payload?.error?.message || `Gemma API failed (${geminiResponse.status})`;
             sendJson(res, 502, { error: errorMessage });
             return;
         }
 
         const text = extractGeminiText(payload);
-        sendJson(res, 200, { text: text || 'Gemini returned an empty response.' });
+        sendJson(res, 200, { text: text || 'Gemma returned an empty response.' });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unexpected proxy error';
         sendJson(res, 500, { error: message });
@@ -264,5 +268,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Gemini proxy listening on http://localhost:${PORT}`);
+    console.log(`Gemma proxy listening on http://localhost:${PORT} (model: ${GEMINI_MODEL})`);
 });

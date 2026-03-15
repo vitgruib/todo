@@ -7,7 +7,12 @@ import { CompanionFrame } from './components/CompanionFrame';
 const INTERVAL_MINUTES_KEY = 'todo-ai-auto-open-interval-minutes-v2';
 const ALARM_SOUND_KEY = 'todo-ai-alarm-sound-v2';
 const AI_PERSONALITY_KEY = 'todo-ai-personality-v1';
+const FOCUS_BUMP_HOURS_KEY = 'todo-ai-focus-bump-hours-v1';
+const DELETE_ON_COMPLETION_KEY = 'todo-ai-delete-on-completion-v1';
 const DEFAULT_INTERVAL_MINUTES = 120;
+const DEFAULT_FOCUS_BUMP_HOURS = 24;
+const MIN_FOCUS_BUMP_HOURS = 1;
+const MAX_FOCUS_BUMP_HOURS = 720;
 const MIN_INTERVAL_MINUTES = 1;
 const ALARM_SOUND_OPTIONS = [
     { value: 'alarm', label: 'Alarm' },
@@ -66,16 +71,50 @@ function App() {
         addTodo,
         deleteTodo,
         toggleTodo,
-        addStep,
-        toggleStep,
+        updateTodo,
         reorderTodos,
     } = useTodos();
     const [intervalMinutes, setIntervalMinutes] = useState<number>(DEFAULT_INTERVAL_MINUTES);
     const [alarmSound, setAlarmSound] = useState<AlarmSoundOption>(DEFAULT_ALARM_SOUND);
     const [personality, setPersonality] = useState<PersonalityOption>(DEFAULT_PERSONALITY);
+    const [focusBumpAfterHours, setFocusBumpAfterHours] = useState<number>(DEFAULT_FOCUS_BUMP_HOURS);
+    const [deleteOnCompletion, setDeleteOnCompletion] = useState<boolean>(true);
     const [hasLoadedSettings, setHasLoadedSettings] = useState<boolean>(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+    const [activeTimer, setActiveTimerState] = useState<{ taskId: string; taskTitle: string; endAt: number } | null>(null);
+    const [timerTick, setTimerTick] = useState(0);
     const settingsMenuRef = useRef<HTMLDivElement | null>(null);
+
+    const clearActiveTimer = () => setActiveTimerState(null);
+    const setActiveTimer = (taskId: string, taskTitle: string, endAt: number) => {
+        setActiveTimerState({ taskId, taskTitle, endAt });
+    };
+
+    useEffect(() => {
+        if (!activeTimer) return;
+        const remaining = activeTimer.endAt - Date.now();
+        if (remaining <= 0) {
+            clearActiveTimer();
+            return;
+        }
+        const t = setTimeout(() => setTimerTick((n) => n + 1), 1000);
+        return () => clearTimeout(t);
+    }, [activeTimer, timerTick]);
+
+    useEffect(() => {
+        if (!activeTimer) return;
+        if (Date.now() >= activeTimer.endAt) clearActiveTimer();
+    }, [activeTimer, timerTick]);
+
+    const handleStartTimer = (taskId: string, taskTitle: string, timerMinutes: number, checkInCount: number) => {
+        if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+            chrome.runtime.sendMessage(
+                { type: 'todo-ai-schedule-task-checkins', taskId, taskTitle, timerMinutes, checkInCount },
+                () => {}
+            );
+        }
+        setActiveTimer(taskId, taskTitle, Date.now() + timerMinutes * 60 * 1000);
+    };
 
     useLayoutEffect(() => {
         document.documentElement.classList.toggle('tab-mode', isTabMode);
@@ -89,13 +128,18 @@ function App() {
 
     useEffect(() => {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-            chrome.storage.local.get([INTERVAL_MINUTES_KEY, ALARM_SOUND_KEY, AI_PERSONALITY_KEY], (result) => {
+            chrome.storage.local.get([INTERVAL_MINUTES_KEY, ALARM_SOUND_KEY, AI_PERSONALITY_KEY, FOCUS_BUMP_HOURS_KEY, DELETE_ON_COMPLETION_KEY], (result) => {
                 const normalizedInterval = normalizeIntervalMinutes(result[INTERVAL_MINUTES_KEY]);
                 const normalizedSound = normalizeAlarmSound(result[ALARM_SOUND_KEY]);
                 const normalizedPersonality = normalizePersonality(result[AI_PERSONALITY_KEY]);
+                const rawBump = result[FOCUS_BUMP_HOURS_KEY];
+                const bumpHours = Number.isFinite(rawBump) ? Math.max(MIN_FOCUS_BUMP_HOURS, Math.min(MAX_FOCUS_BUMP_HOURS, Math.round(Number(rawBump)))) : DEFAULT_FOCUS_BUMP_HOURS;
+                const deleteOnComplete = result[DELETE_ON_COMPLETION_KEY];
                 setIntervalMinutes(normalizedInterval);
                 setAlarmSound(normalizedSound);
                 setPersonality(normalizedPersonality);
+                setFocusBumpAfterHours(bumpHours);
+                setDeleteOnCompletion(deleteOnComplete === false ? false : true);
                 setHasLoadedSettings(true);
             });
             return;
@@ -116,6 +160,13 @@ function App() {
         if (savedPersonality) {
             setPersonality(normalizePersonality(savedPersonality));
         }
+        const savedBump = localStorage.getItem(FOCUS_BUMP_HOURS_KEY);
+        if (savedBump) {
+            const n = Number(savedBump);
+            if (Number.isFinite(n)) setFocusBumpAfterHours(Math.max(MIN_FOCUS_BUMP_HOURS, Math.min(MAX_FOCUS_BUMP_HOURS, Math.round(n))));
+        }
+        const savedDeleteOnCompletion = localStorage.getItem(DELETE_ON_COMPLETION_KEY);
+        if (savedDeleteOnCompletion !== null) setDeleteOnCompletion(savedDeleteOnCompletion === 'true');
 
         setHasLoadedSettings(true);
     }, []);
@@ -129,6 +180,8 @@ function App() {
                 [INTERVAL_MINUTES_KEY]: intervalMinutes,
                 [ALARM_SOUND_KEY]: alarmSound,
                 [AI_PERSONALITY_KEY]: personality,
+                [FOCUS_BUMP_HOURS_KEY]: focusBumpAfterHours,
+                [DELETE_ON_COMPLETION_KEY]: deleteOnCompletion,
             });
             return;
         }
@@ -136,7 +189,9 @@ function App() {
         localStorage.setItem(INTERVAL_MINUTES_KEY, String(intervalMinutes));
         localStorage.setItem(ALARM_SOUND_KEY, alarmSound);
         localStorage.setItem(AI_PERSONALITY_KEY, personality);
-    }, [alarmSound, hasLoadedSettings, intervalMinutes, personality]);
+        localStorage.setItem(FOCUS_BUMP_HOURS_KEY, String(focusBumpAfterHours));
+        localStorage.setItem(DELETE_ON_COMPLETION_KEY, String(deleteOnCompletion));
+    }, [alarmSound, deleteOnCompletion, focusBumpAfterHours, hasLoadedSettings, intervalMinutes, personality]);
 
     useEffect(() => {
         if (!isSettingsOpen) {
@@ -254,6 +309,31 @@ function App() {
                                                     ))}
                                                 </select>
                                             </div>
+                                            <div className="interval-setting">
+                                                <label htmlFor="focusBumpHours">Bump when task in focus for (hours)</label>
+                                                <input
+                                                    id="focusBumpHours"
+                                                    type="number"
+                                                    min={MIN_FOCUS_BUMP_HOURS}
+                                                    max={MAX_FOCUS_BUMP_HOURS}
+                                                    step={1}
+                                                    value={focusBumpAfterHours}
+                                                    onChange={(e) => {
+                                                        const v = Number(e.target.value);
+                                                        if (Number.isFinite(v)) setFocusBumpAfterHours(Math.max(MIN_FOCUS_BUMP_HOURS, Math.min(MAX_FOCUS_BUMP_HOURS, Math.round(v))));
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="interval-setting interval-setting--checkbox">
+                                                <label className="interval-setting-checkbox-label">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={deleteOnCompletion}
+                                                        onChange={(e) => setDeleteOnCompletion(e.target.checked)}
+                                                    />
+                                                    <span>Delete on completion</span>
+                                                </label>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -263,14 +343,24 @@ function App() {
                 </header>
 
                 <section className="todo-section">
+                    {activeTimer && (
+                        <div className="active-timer-bar" role="status">
+                            <span className="active-timer-label">Timer</span>
+                            <span className="active-timer-task">{activeTimer.taskTitle}</span>
+                            <span className="active-timer-remaining">
+                                {Math.max(0, Math.ceil((activeTimer.endAt - Date.now()) / 60000))} min left
+                            </span>
+                        </div>
+                    )}
                     <TodoForm onAdd={addTodo} />
                     <TodoList
                         todos={todos}
                         onReorder={reorderTodos}
-                        onToggle={toggleTodo}
+                        onToggle={(id) => toggleTodo(id, { deleteIfCompleted: deleteOnCompletion })}
                         onDelete={deleteTodo}
-                        onAddStep={addStep}
-                        onToggleStep={toggleStep}
+                        onUpdateTodo={updateTodo}
+                        activeTimerTaskId={activeTimer?.taskId ?? null}
+                        onStartTimer={handleStartTimer}
                     />
                 </section>
             </div>
@@ -279,10 +369,10 @@ function App() {
                 <CompanionFrame
                     todos={todos}
                     personality={personality}
+                    focusBumpAfterHours={focusBumpAfterHours}
                     onAddTodo={addTodo}
-                    onAddStep={addStep}
-                    onToggleTodo={toggleTodo}
-                    onToggleStep={toggleStep}
+                    onToggleTodo={(id) => toggleTodo(id, { deleteIfCompleted: deleteOnCompletion })}
+                    onUpdateTodo={updateTodo}
                 />
             </aside>
         </div>

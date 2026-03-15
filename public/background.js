@@ -9,14 +9,21 @@ const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 const PLAY_SOUND_MESSAGE_TYPE = 'todo-ai-play-alarm-sound';
 const CHAT_REQUEST_MESSAGE_TYPE = 'todo-ai-chat-request';
 const CHAT_CANCEL_MESSAGE_TYPE = 'todo-ai-chat-cancel';
+const CHAT_STORAGE_KEY = 'todo_ai_companion_chat_v2';
 const CHAT_RESULTS_KEY = 'todo-ai-chat-results-v2';
 const CHECKIN_REQUEST_KEY = 'todo-ai-checkin-request-v1';
+const TASK_CHECKIN_ALARM_PREFIX = 'todo-ai-task-checkin-';
+const TASK_CHECKIN_REQUEST_KEY = 'todo-ai-task-checkin-request-v1';
+const TASK_CHECKIN_META_KEY = 'todo-ai-task-checkin-meta-v1';
+const TIMER_BADGE_BLUE = '#2563eb';
 const MAX_CHAT_RESULTS = 25;
 const CHAT_REQUEST_TIMEOUT_MS = 90_000;
 const CHAT_CANCELLED_MESSAGE = 'Request cancelled by user.';
 const CHAT_TIMEOUT_MESSAGE = 'Request timed out. Please try again.';
 let creatingOffscreenDocument = null;
 const activeChatControllers = new Map();
+const EXTENSION_PAGE_OPEN_COOLDOWN_MS = 60_000;
+let lastExtensionPageOpenAt = 0;
 
 function normalizeIntervalMinutes(value) {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -66,6 +73,12 @@ function hydrateSettingsAndSchedule() {
 }
 
 function openOrFocusExtensionPage() {
+    const now = Date.now();
+    if (now - lastExtensionPageOpenAt < EXTENSION_PAGE_OPEN_COOLDOWN_MS) {
+        return;
+    }
+    lastExtensionPageOpenAt = now;
+
     const tabViewUrl = chrome.runtime.getURL('index.html?view=tab');
     const extensionPageBaseUrl = chrome.runtime.getURL('index.html');
 
@@ -302,18 +315,73 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name !== ALARM_NAME) {
+    if (alarm.name === ALARM_NAME) {
+        openOrFocusExtensionPage();
+        void playAlarmSound();
         return;
     }
-
-    openOrFocusExtensionPage();
-    void playAlarmSound();
-    chrome.storage.local.set({
-        [CHECKIN_REQUEST_KEY]: Date.now(),
-    });
+    // Task check-in alarms: open tab and set storage so UI can show "Check-in: [task]"
+    if (alarm.name.startsWith(TASK_CHECKIN_ALARM_PREFIX)) {
+        const payload = alarm.name.slice(TASK_CHECKIN_ALARM_PREFIX.length);
+        const [taskId, indexStr] = payload.split('|');
+        const index = indexStr ? parseInt(indexStr, 10) : 0;
+        if (taskId) {
+            chrome.storage.local.get([TASK_CHECKIN_META_KEY], (result) => {
+                const meta = result[TASK_CHECKIN_META_KEY] || {};
+                const taskTitle = (meta[taskId] && meta[taskId].title) ? meta[taskId].title : '';
+                const totalCheckIns = (meta[taskId] && meta[taskId].totalCheckIns) ? meta[taskId].totalCheckIns : 1;
+                chrome.storage.local.set({
+                    [TASK_CHECKIN_REQUEST_KEY]: {
+                        taskId,
+                        taskTitle,
+                        index,
+                        at: Date.now(),
+                    },
+                });
+                if (typeof chrome.action !== 'undefined' && index >= totalCheckIns - 1) {
+                    chrome.action.setBadgeText({ text: '' });
+                }
+            });
+        }
+        openOrFocusExtensionPage();
+    }
 });
 
+const SCHEDULE_TASK_CHECKINS_MESSAGE_TYPE = 'todo-ai-schedule-task-checkins';
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === SCHEDULE_TASK_CHECKINS_MESSAGE_TYPE) {
+        const taskId = typeof message.taskId === 'string' ? message.taskId.trim() : '';
+        const taskTitle = typeof message.taskTitle === 'string' ? message.taskTitle : '';
+        const timerMinutes = typeof message.timerMinutes === 'number' && message.timerMinutes >= 1 ? message.timerMinutes : 0;
+        const checkInCount = typeof message.checkInCount === 'number' && message.checkInCount >= 1 ? Math.floor(message.checkInCount) : 0;
+        if (!taskId || timerMinutes < 1 || checkInCount < 1) {
+            sendResponse({ ok: false, error: 'Invalid schedule-task-checkins payload.' });
+            return false;
+        }
+        // Only one task timer at a time: clear all task-checkin alarms, then create this task's alarms
+        chrome.alarms.getAll((alarms) => {
+            alarms.filter((a) => a.name.startsWith(TASK_CHECKIN_ALARM_PREFIX)).forEach((a) => chrome.alarms.clear(a.name));
+            const prefix = TASK_CHECKIN_ALARM_PREFIX + taskId + '|';
+            chrome.storage.local.get([TASK_CHECKIN_META_KEY], (result) => {
+                const meta = result[TASK_CHECKIN_META_KEY] || {};
+                meta[taskId] = { title: taskTitle, totalCheckIns: checkInCount };
+                chrome.storage.local.set({ [TASK_CHECKIN_META_KEY]: meta });
+            });
+            const intervalMinutes = timerMinutes / checkInCount;
+            for (let i = 0; i < checkInCount; i++) {
+                const delayInMinutes = intervalMinutes * (i + 1);
+                chrome.alarms.create(prefix + String(i), { delayInMinutes });
+            }
+            if (typeof chrome.action !== 'undefined') {
+                chrome.action.setBadgeText({ text: '\u2022' });
+                chrome.action.setBadgeBackgroundColor({ color: TIMER_BADGE_BLUE });
+            }
+            sendResponse({ ok: true });
+        });
+        return true;
+    }
+
     if (message?.type === CHAT_CANCEL_MESSAGE_TYPE) {
         const requestId = typeof message.requestId === 'string' ? message.requestId.trim() : '';
         if (!requestId) {
@@ -347,11 +415,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return false;
     }
 
+    const chatState = message.chatState;
+    if (
+        chatState &&
+        typeof chatState === 'object' &&
+        Array.isArray(chatState.messages) &&
+        typeof chatState.statusMessage === 'string'
+    ) {
+        storageSet({
+            [CHAT_STORAGE_KEY]: {
+                messages: chatState.messages.slice(-100),
+                statusMessage: chatState.statusMessage,
+                pendingRequestId: requestId,
+            },
+        }).then(() => {});
+    }
+
     void (async () => {
         try {
             const result = await runChatRequest(requestId, proxyUrl, messages, todoContext, assistantConfig);
             await storeChatResult(result);
             sendResponse({ ok: true });
+            openOrFocusExtensionPage();
         } catch (error) {
             const messageText = error instanceof Error ? error.message : String(error);
             await storeChatResult({
@@ -361,6 +446,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                 completedAt: Date.now(),
             });
             sendResponse({ ok: false, error: messageText });
+            openOrFocusExtensionPage();
         }
     })();
 

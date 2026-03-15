@@ -1,4 +1,43 @@
-﻿node_modules/
+# Dependencies
+node_modules/
+
+# Build output
 dist/
+build/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
 server/.env
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / IDE
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Cache and temp
+.cache/
+.turbo/
+.eslintcache
+*.tsbuildinfo
+.parcel-cache/
+
+# Test / coverage
+coverage/
+.nyc_output/
