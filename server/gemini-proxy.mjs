@@ -30,10 +30,18 @@ if (existsSync(envFile)) {
 
 const PORT = Number(process.env.PORT ?? '8787');
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY ?? '').trim();
-const DEFAULT_GEMMA_MODEL = 'gemma-2-9b-it';
+const DEFAULT_GEMMA_MODEL = 'gemma-3-27b-it';
+/** Google removed these from v1beta generateContent; map so old env vars keep working. */
+const LEGACY_GEMMA_MODEL_ALIASES = new Map([['gemma-2-9b-it', DEFAULT_GEMMA_MODEL]]);
 let GEMINI_MODEL = (process.env.GEMINI_MODEL ?? DEFAULT_GEMMA_MODEL).trim();
 if (GEMINI_MODEL.toLowerCase().startsWith('gemini-')) {
     GEMINI_MODEL = DEFAULT_GEMMA_MODEL;
+} else {
+    const replacement = LEGACY_GEMMA_MODEL_ALIASES.get(GEMINI_MODEL.toLowerCase());
+    if (replacement) {
+        console.warn(`GEMINI_MODEL "${GEMINI_MODEL}" is no longer available; using ${replacement}.`);
+        GEMINI_MODEL = replacement;
+    }
 }
 const SYSTEM_PROMPT =
     'You are Todo AI, powered by Gemma. Do not claim to be Gemini or any other model. Talk like a real person: use contractions, short sentences, and a warm but efficient tone. Keep responses concise and actionable. Help break tasks into practical steps when asked.';

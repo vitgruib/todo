@@ -25,15 +25,16 @@ npm run dev
 
 ## AI Backend (Gemma Proxy)
 
-The extension uses a local backend proxy so your API key stays server-side. Default model is Gemma 2 9B.
+The extension uses a local backend proxy so your API key stays server-side. Default model is Gemma 3 27B (`gemma-3-27b-it`).
 
 1. Create `server/.env`.
 2. Add:
    ```env
    GEMINI_API_KEY=YOUR_KEY
-   GEMINI_MODEL=gemma-2-9b-it
+   GEMINI_MODEL=gemma-3-27b-it
    PORT=8787
    ```
+   You can omit `GEMINI_MODEL` to use the default. If an old deploy still has `GEMINI_MODEL=gemma-2-9b-it`, the proxy remaps it to `gemma-3-27b-it` after you redeploy current server code.
 3. Start proxy:
    ```bash
    npm run proxy
