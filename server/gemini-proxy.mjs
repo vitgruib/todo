@@ -191,6 +191,25 @@ const buildSystemPrompt = (todoContext, assistantConfig) => {
     return `${instructions}\n\nCurrent user todo context (JSON):\n${todoContext}`;
 };
 
+/** Hosted Gemma on the Generative Language API rejects `system_instruction` ("Developer instruction is not enabled"). */
+const geminiModelSupportsSystemInstruction = () => !GEMINI_MODEL.toLowerCase().startsWith('gemma-');
+
+const mergeSystemPromptIntoContents = (contents, systemText) => {
+    const out = contents.map((entry) => ({
+        role: entry.role,
+        parts: entry.parts.map((part) => ({ ...part })),
+    }));
+    const userIndex = out.findIndex((entry) => entry.role === 'user');
+    if (userIndex >= 0) {
+        const first = out[userIndex].parts[0];
+        const existing = typeof first?.text === 'string' ? first.text : '';
+        out[userIndex].parts[0] = { text: `${systemText}\n\n---\n\n${existing}` };
+        return out;
+    }
+
+    return [{ role: 'user', parts: [{ text: systemText }] }, ...out];
+};
+
 const server = createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
         sendJson(res, 204, {});
@@ -249,15 +268,18 @@ const server = createServer(async (req, res) => {
             `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}` +
             `:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
+        const systemText = buildSystemPrompt(todoContext, assistantConfig);
+        const payloadBody = geminiModelSupportsSystemInstruction()
+            ? {
+                  system_instruction: { parts: [{ text: systemText }] },
+                  contents: messages,
+              }
+            : { contents: mergeSystemPromptIntoContents(messages, systemText) };
+
         const geminiResponse = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                system_instruction: {
-                    parts: [{ text: buildSystemPrompt(todoContext, assistantConfig) }],
-                },
-                contents: messages,
-            }),
+            body: JSON.stringify(payloadBody),
         });
 
         const payload = await geminiResponse.json().catch(() => null);
