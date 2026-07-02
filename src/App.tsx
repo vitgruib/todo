@@ -50,7 +50,6 @@ function App() {
         deleteTodo,
         toggleTodo,
         updateTodo,
-        reorderTodos,
     } = useTodos();
     const [intervalMinutes, setIntervalMinutes] = useState<number>(DEFAULT_INTERVAL_MINUTES);
     const [alarmSound, setAlarmSound] = useState<AlarmSoundOption>(DEFAULT_ALARM_SOUND);
@@ -281,7 +280,6 @@ function App() {
                     <TodoForm onAdd={addTodo} />
                     <TodoList
                         todos={todos}
-                        onReorder={reorderTodos}
                         onToggle={(id) => toggleTodo(id, { deleteIfCompleted: deleteOnCompletion })}
                         onDelete={deleteTodo}
                         onUpdateTodo={updateTodo}
@@ -295,9 +293,8 @@ function App() {
                 <ReminderPopup
                     todo={activeReminder}
                     onDone={() => handleReminderDone(activeReminder)}
-                    onSnooze={(minutes) => setReminder(activeReminder, Date.now() + minutes * 60_000)}
-                    onSetTime={(remindAt) => setReminder(activeReminder, remindAt)}
-                    onDismiss={() => clearReminder(activeReminder)}
+                    onReschedule={(remindAt) => setReminder(activeReminder, remindAt)}
+                    onRelegate={() => clearReminder(activeReminder)}
                 />
             )}
         </div>

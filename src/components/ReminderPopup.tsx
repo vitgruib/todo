@@ -1,48 +1,52 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Todo } from '../types';
-import { toDateTimeLocalValue } from '../reminders';
+import { DUE_PRESETS, toDateTimeLocalValue } from '../reminders';
 
 interface ReminderPopupProps {
     todo: Todo;
     onDone: () => void;
-    onSnooze: (minutes: number) => void;
-    onSetTime: (remindAt: number) => void;
-    onDismiss: () => void;
+    onReschedule: (remindAt: number) => void;
+    onRelegate: () => void;
 }
 
-const SNOOZE_OPTIONS = [
-    { label: '10 min', minutes: 10 },
-    { label: '30 min', minutes: 30 },
-    { label: '1 hour', minutes: 60 },
-] as const;
+const CUSTOM = 'custom';
 
 export const ReminderPopup: React.FC<ReminderPopupProps> = ({
     todo,
     onDone,
-    onSnooze,
-    onSetTime,
-    onDismiss,
+    onReschedule,
+    onRelegate,
 }) => {
+    const [selection, setSelection] = useState<string>(DUE_PRESETS[3].value); // default: 1 day
     const [customValue, setCustomValue] = useState<string>(() =>
-        toDateTimeLocalValue(Date.now() + 15 * 60_000)
+        toDateTimeLocalValue(Date.now() + 60 * 60_000)
     );
 
-    const handleSetCustom = () => {
-        const ms = new Date(customValue).getTime();
-        if (Number.isNaN(ms)) {
+    const isCustom = selection === CUSTOM;
+
+    const handleSet = () => {
+        if (isCustom) {
+            const ms = new Date(customValue).getTime();
+            if (Number.isNaN(ms)) {
+                return;
+            }
+            onReschedule(ms);
             return;
         }
-        onSetTime(ms);
+        const preset = DUE_PRESETS.find((option) => option.value === selection);
+        if (preset) {
+            onReschedule(Date.now() + preset.ms);
+        }
     };
 
     return createPortal(
-        <div className="reminder-overlay" role="dialog" aria-modal="true" aria-label="Task reminder">
+        <div className="reminder-overlay" role="dialog" aria-modal="true" aria-label="Task due">
             <div className="reminder-popup">
                 <div className="reminder-popup-eyebrow">Time's up — do it now</div>
                 <h2 className="reminder-popup-title">{todo.title}</h2>
                 <p className="reminder-popup-sub">
-                    This deadline has passed. Knock it out now, or set a new deadline.
+                    This deadline has passed. Knock it out, push it back, or move it to your long-term goals.
                 </p>
 
                 <button type="button" className="reminder-btn reminder-btn--primary" onClick={onDone}>
@@ -50,33 +54,34 @@ export const ReminderPopup: React.FC<ReminderPopupProps> = ({
                 </button>
 
                 <div className="reminder-section-label">Set a new deadline</div>
-                <div className="reminder-snooze-row">
-                    {SNOOZE_OPTIONS.map((option) => (
-                        <button
-                            key={option.minutes}
-                            type="button"
-                            className="reminder-btn reminder-btn--snooze"
-                            onClick={() => onSnooze(option.minutes)}
-                        >
-                            +{option.label}
-                        </button>
-                    ))}
-                </div>
-
                 <div className="reminder-custom-row">
-                    <input
-                        type="datetime-local"
+                    <select
                         className="reminder-custom-input"
-                        value={customValue}
-                        onChange={(e) => setCustomValue(e.target.value)}
-                    />
-                    <button type="button" className="reminder-btn reminder-btn--set" onClick={handleSetCustom}>
+                        value={selection}
+                        onChange={(e) => setSelection(e.target.value)}
+                    >
+                        {DUE_PRESETS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                In {option.label}
+                            </option>
+                        ))}
+                        <option value={CUSTOM}>Custom…</option>
+                    </select>
+                    <button type="button" className="reminder-btn reminder-btn--set" onClick={handleSet}>
                         Set
                     </button>
                 </div>
+                {isCustom && (
+                    <input
+                        type="datetime-local"
+                        className="reminder-custom-input reminder-custom-input--full"
+                        value={customValue}
+                        onChange={(e) => setCustomValue(e.target.value)}
+                    />
+                )}
 
-                <button type="button" className="reminder-btn reminder-btn--ghost" onClick={onDismiss}>
-                    Dismiss (no reminder)
+                <button type="button" className="reminder-btn reminder-btn--ghost" onClick={onRelegate}>
+                    Relegate to long-term goal
                 </button>
             </div>
         </div>,

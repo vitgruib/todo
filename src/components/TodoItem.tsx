@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Draggable } from '@hello-pangea/dnd';
 import { Todo } from '../types';
-import { formatReminderTime, toDateTimeLocalValue } from '../reminders';
+import { formatReminderTime, toDateTimeLocalValue, formatDueCaption } from '../reminders';
 
 interface TodoItemProps {
     todo: Todo;
-    index: number;
     sectionId: string;
     onToggle: (id: string) => void;
     onDelete: (id: string) => void;
@@ -15,35 +13,8 @@ interface TodoItemProps {
     onClearReminder: (todo: Todo) => void;
 }
 
-function formatAddedToFocus(ts: number): string {
-    const now = Date.now();
-    const diffMs = now - ts;
-    const diffM = Math.floor(diffMs / 60000);
-    const diffH = Math.floor(diffMs / 3600000);
-    const diffD = Math.floor(diffMs / 86400000);
-    if (diffM < 1) return 'Just now';
-    if (diffM < 60) return `${diffM}m ago`;
-    if (diffH < 24) return `${diffH}h ago`;
-    if (diffD < 7) return `${diffD}d ago`;
-    const diffW = Math.floor(diffD / 7);
-    return diffW < 4 ? `${diffW}w ago` : `${diffD}d ago`;
-}
-
-/** Compact "days since added" for caption under title (no date) */
-function daysSinceAdded(ts: number): string {
-    const diffMs = Date.now() - ts;
-    const diffD = Math.floor(diffMs / 86400000);
-    const diffW = Math.floor(diffD / 7);
-    if (diffD < 1) return 'Today';
-    if (diffD === 1) return '1d';
-    if (diffD < 7) return `${diffD}d`;
-    if (diffW < 4) return `${diffW}w`;
-    return `${diffD}d`;
-}
-
 export const TodoItem: React.FC<TodoItemProps> = ({
     todo,
-    index,
     sectionId,
     onToggle,
     onDelete,
@@ -71,7 +42,7 @@ export const TodoItem: React.FC<TodoItemProps> = ({
         }
     }, [isEditing]);
 
-    const PANEL_WIDTH_PX = 224;
+    const PANEL_WIDTH_PX = 288;
 
     useLayoutEffect(() => {
         if (!focusMenuOpen || !triggerRef.current) return;
@@ -113,14 +84,7 @@ export const TodoItem: React.FC<TodoItemProps> = ({
         setIsEditing(false);
     };
 
-    const isFocus = sectionId === 'focus';
-    const todayStr = (() => {
-        const t = new Date();
-        return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
-    })();
-    const refreshDate = () => {
-        onUpdateTodo(todo.id, { deadline: todayStr, addedToFocusAt: Date.now() });
-    };
+    const isShortRun = sectionId === 'short-run';
 
     const commitReminderDraft = () => {
         if (!reminderDraft) return;
@@ -130,15 +94,8 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     };
 
     return (
-        <Draggable draggableId={todo.id} index={index}>
-            {(provided) => (
-                <div
-                    ref={provided.innerRef}
-                    {...provided.draggableProps}
-                    className={`todo-item ${todo.completed ? 'completed' : ''}`}
-                >
+        <div className={`todo-item ${todo.completed ? 'completed' : ''}`}>
                     <div className="todo-header">
-                        <span className="todo-grip" {...provided.dragHandleProps} aria-hidden title="Drag from grip">⋮⋮</span>
                         <input
                             type="checkbox"
                             checked={todo.completed}
@@ -174,8 +131,8 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                     >
                                         {todo.title}
                                     </h3>
-                                    {isFocus && todo.addedToFocusAt != null && (
-                                        <span className="todo-days-caption">{daysSinceAdded(todo.addedToFocusAt)}</span>
+                                    {isShortRun && todo.remindAt != null && (
+                                        <span className="todo-days-caption">{formatDueCaption(todo.remindAt)}</span>
                                     )}
                                 </>
                             )}
@@ -198,54 +155,45 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                         className="todo-focus-menu-panel todo-focus-menu-panel--portal"
                                         style={{ top: menuPosition.top, left: menuPosition.left, width: PANEL_WIDTH_PX }}
                                     >
-                                        {isFocus && (
-                                            <>
-                                                {todo.addedToFocusAt != null && (
-                                                    <p className="todo-focus-menu-added">
-                                                        {formatAddedToFocus(todo.addedToFocusAt)}
-                                                    </p>
-                                                )}
-                                                <button type="button" className="todo-focus-menu-item" onClick={() => { refreshDate(); setFocusMenuOpen(false); }}>
-                                                    Refresh date
+                                        <div className="todo-focus-menu-timer-block">
+                                            <div className="todo-focus-menu-timer-heading">
+                                                {isShortRun ? 'Due date' : 'Long-term goal'}
+                                            </div>
+                                            {isShortRun && todo.remindAt != null && (
+                                                <p className="todo-focus-menu-reminder-current">
+                                                    Due {formatReminderTime(todo.remindAt)}
+                                                </p>
+                                            )}
+                                            <div className="todo-focus-menu-field">
+                                                <label className="todo-focus-menu-label">
+                                                    {isShortRun ? 'Change due date' : 'Give it a due date'}
+                                                </label>
+                                                <input
+                                                    type="datetime-local"
+                                                    className="todo-focus-menu-input"
+                                                    value={reminderDraft || (todo.remindAt != null ? toDateTimeLocalValue(todo.remindAt) : '')}
+                                                    onChange={(e) => setReminderDraft(e.target.value)}
+                                                />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="todo-focus-menu-start"
+                                                onClick={() => { commitReminderDraft(); setReminderDraft(''); setFocusMenuOpen(false); }}
+                                                disabled={!reminderDraft}
+                                            >
+                                                {isShortRun ? 'Update due date' : 'Move to short run'}
+                                            </button>
+                                            {isShortRun && (
+                                                <button
+                                                    type="button"
+                                                    className="todo-focus-menu-item"
+                                                    onClick={() => { onClearReminder(todo); setReminderDraft(''); setFocusMenuOpen(false); }}
+                                                >
+                                                    Relegate to long-term goal
                                                 </button>
-                                                <div className="todo-focus-menu-divider" />
-                                                <div className="todo-focus-menu-timer-block">
-                                                    <div className="todo-focus-menu-timer-heading">Deadline reminder</div>
-                                                    {todo.remindAt != null && (
-                                                        <p className="todo-focus-menu-reminder-current">
-                                                            Reminds at {formatReminderTime(todo.remindAt)}
-                                                        </p>
-                                                    )}
-                                                    <div className="todo-focus-menu-field">
-                                                        <label className="todo-focus-menu-label">Remind me at</label>
-                                                        <input
-                                                            type="datetime-local"
-                                                            className="todo-focus-menu-input"
-                                                            value={reminderDraft || (todo.remindAt != null ? toDateTimeLocalValue(todo.remindAt) : '')}
-                                                            onChange={(e) => setReminderDraft(e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        className="todo-focus-menu-start"
-                                                        onClick={() => { commitReminderDraft(); setReminderDraft(''); setFocusMenuOpen(false); }}
-                                                        disabled={!reminderDraft}
-                                                    >
-                                                        {todo.remindAt != null ? 'Update reminder' : 'Set reminder'}
-                                                    </button>
-                                                    {todo.remindAt != null && (
-                                                        <button
-                                                            type="button"
-                                                            className="todo-focus-menu-item"
-                                                            onClick={() => { onClearReminder(todo); setReminderDraft(''); setFocusMenuOpen(false); }}
-                                                        >
-                                                            Clear reminder
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <div className="todo-focus-menu-divider" />
-                                            </>
-                                        )}
+                                            )}
+                                        </div>
+                                        <div className="todo-focus-menu-divider" />
                                         <button type="button" className="todo-focus-menu-item todo-focus-menu-item--danger" onClick={() => { onDelete(todo.id); setFocusMenuOpen(false); }}>
                                             Delete
                                         </button>
@@ -254,8 +202,6 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                 )}
                         </div>
                     </div>
-                </div>
-            )}
-        </Draggable>
+        </div>
     );
 };

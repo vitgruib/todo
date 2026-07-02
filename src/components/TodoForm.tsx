@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 interface TodoFormProps {
-    onAdd: (title: string, deadline?: string) => void;
+    onAdd: (title: string) => void;
 }
 
 export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
@@ -10,14 +10,7 @@ export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (title.trim()) {
-            // Default to today (Focus) using LOCAL time
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            const today = `${year}-${month}-${day}`;
-
-            onAdd(title, today);
+            onAdd(title.trim());
             setTitle('');
         }
     };

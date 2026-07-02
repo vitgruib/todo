@@ -27,6 +27,34 @@ export const clearReminderAlarm = (taskId: string) => {
     runtime.sendMessage({ type: CLEAR_REMINDER_MESSAGE_TYPE, taskId }, () => {});
 };
 
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** How far out a short-run task can be (re)scheduled. `ms` is added to "now". */
+export const DUE_PRESETS = [
+    { value: '1h', label: '1 hour', ms: 1 * HOUR_MS },
+    { value: '3h', label: '3 hours', ms: 3 * HOUR_MS },
+    { value: '6h', label: '6 hours', ms: 6 * HOUR_MS },
+    { value: '1d', label: '1 day', ms: 1 * DAY_MS },
+    { value: '3d', label: '3 days', ms: 3 * DAY_MS },
+    { value: '1w', label: '1 week', ms: 7 * DAY_MS },
+] as const;
+
+/** Default due date for a brand-new short-run task (1 day out). */
+export const DEFAULT_DUE_MS = 1 * DAY_MS;
+
+/** Short relative "Due …" caption for a short-run task. */
+export const formatDueCaption = (remindAt: number): string => {
+    const diff = remindAt - Date.now();
+    if (diff <= 0) return 'Overdue';
+    const mins = Math.round(diff / 60000);
+    if (mins < 60) return `Due in ${mins}m`;
+    const hours = Math.round(diff / HOUR_MS);
+    if (hours < 48) return `Due in ${hours}h`;
+    const days = Math.round(diff / DAY_MS);
+    return `Due in ${days}d`;
+};
+
 /** Format an epoch-ms reminder for display, e.g. "3:05 PM" (today) or "Tue 3:05 PM". */
 export const formatReminderTime = (remindAt: number): string => {
     const d = new Date(remindAt);

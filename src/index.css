@@ -321,18 +321,6 @@ body.tab-mode {
   gap: 0.5rem;
 }
 
-.todo-grip {
-  color: var(--text-dim);
-  font-size: 0.75rem;
-  cursor: grab;
-  user-select: none;
-  line-height: 1;
-}
-
-.todo-grip:active {
-  cursor: grabbing;
-}
-
 .todo-chevron {
   display: inline-block;
   color: var(--text-dim);
@@ -540,7 +528,7 @@ body.tab-mode {
 
 .todo-focus-menu-field .todo-focus-menu-input {
   width: 100%;
-  max-width: 6rem;
+  max-width: none;
 }
 
 .todo-focus-menu-label {
@@ -698,17 +686,17 @@ body.tab-mode {
 }
 
 .section-list {
-  min-height: 80px;
+  min-height: 60px;
   background: rgba(30, 41, 59, 0.3);
   border-radius: var(--radius);
   padding: 0.75rem;
-  transition: background 0.2s, border-color 0.2s;
-  border: 2px dashed transparent;
 }
 
-.section-list.dragging-over {
-  background: rgba(99, 102, 241, 0.1);
-  border-color: var(--primary);
+.section-empty {
+  margin: 0;
+  padding: 0.35rem 0.25rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
 }
 
 @media (max-width: 720px) {
@@ -864,4 +852,13 @@ body.tab-mode {
   font-size: 0.78rem;
   color: var(--primary);
   font-weight: 600;
+}
+
+.reminder-custom-input--full {
+  width: 100%;
+  margin-top: calc(-1 * var(--space-1));
+}
+
+select.reminder-custom-input {
+  cursor: pointer;
 }

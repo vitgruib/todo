@@ -8,11 +8,11 @@ export interface Todo {
     id: string;
     title: string;
     completed: boolean;
-    deadline?: string;
     steps: Step[];
     createdAt: number;
-    /** When the task was last moved into Focus (drives the "days since added" caption) */
-    addedToFocusAt?: number;
-    /** Epoch ms for a "do now" reminder. When it passes, a popup asks you to do it or set a new deadline. */
+    /**
+     * Epoch ms due date. Present => "Short run" task (has a due date that can expire).
+     * Absent => "Long run" long-term goal (no due date).
+     */
     remindAt?: number;
 }
