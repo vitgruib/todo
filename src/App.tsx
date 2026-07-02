@@ -23,13 +23,12 @@ const ALARM_SOUND_OPTIONS = [
 ] as const;
 type AlarmSoundOption = (typeof ALARM_SOUND_OPTIONS)[number]['value'];
 const PERSONALITY_OPTIONS = [
-    { value: 'normal', label: 'Normal' },
     { value: 'endearing', label: 'Endearing' },
     { value: 'caustic', label: 'Caustic' },
 ] as const;
 type PersonalityOption = (typeof PERSONALITY_OPTIONS)[number]['value'];
 const DEFAULT_ALARM_SOUND: AlarmSoundOption = 'alarm';
-const DEFAULT_PERSONALITY: PersonalityOption = 'normal';
+const DEFAULT_PERSONALITY: PersonalityOption = 'endearing';
 const ALARM_SOUND_VALUES = new Set<AlarmSoundOption>(
     ALARM_SOUND_OPTIONS.map((option) => option.value)
 );
@@ -57,6 +56,9 @@ const normalizeAlarmSound = (value: unknown): AlarmSoundOption => {
 
 const normalizePersonality = (value: unknown): PersonalityOption => {
     if (typeof value !== 'string') {
+        return DEFAULT_PERSONALITY;
+    }
+    if (value === 'normal') {
         return DEFAULT_PERSONALITY;
     }
     return PERSONALITY_VALUES.has(value as PersonalityOption)

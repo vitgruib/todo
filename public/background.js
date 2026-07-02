@@ -179,8 +179,10 @@ function normalizeAssistantConfig(config) {
     }
 
     const candidate = config;
+    const p = typeof candidate.personality === 'string' ? candidate.personality : 'endearing';
+    const personality = p === 'endearing' || p === 'caustic' ? p : 'endearing';
     return {
-        personality: typeof candidate.personality === 'string' ? candidate.personality : 'normal',
+        personality,
         enableActionProposals: Boolean(candidate.enableActionProposals),
         requireConfirmation: Boolean(candidate.requireConfirmation),
         source: typeof candidate.source === 'string' ? candidate.source : 'user',

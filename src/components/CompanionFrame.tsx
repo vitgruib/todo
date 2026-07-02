@@ -25,7 +25,7 @@ interface PersistedChatState {
 
 interface CompanionFrameProps {
     todos: Todo[];
-    personality: 'normal' | 'endearing' | 'caustic';
+    personality: 'endearing' | 'caustic';
     focusBumpAfterHours: number;
     onAddTodo: (title: string, deadline?: string) => void;
     onToggleTodo: (id: string) => void;
@@ -40,7 +40,7 @@ const CHAT_CANCEL_MESSAGE_TYPE = 'todo-ai-chat-cancel';
 const CHAT_RESULTS_LOCAL_FALLBACK_KEY = 'todo_ai_companion_chat_results_v2';
 const COMPLETION_REACTION_COOLDOWN_MS = 7_000;
 const INITIAL_ASSISTANT_TEXT =
-    "Hi, I'm Todo, your companion. I can help you prioritize tasks and keep momentum.";
+    "Hi, I'm Todo, your companion. I can help you prioritize tasks and keep momentum. If we change your list, I'll ask what you want and double-check before anything applies—you confirm the final step in here.";
 const PROXY_URL = 'https://todo-cl9u.onrender.com/api/chat';
 const MAX_TODO_CONTEXT_ITEMS = 60;
 
@@ -176,7 +176,7 @@ const getTodoCategory = (deadline?: string): 'focus' | 'up-next' | 'someday' => 
     return 'someday';
 };
 
-const buildTodoContext = (todos: Todo[], personality: 'normal' | 'endearing' | 'caustic') => {
+const buildTodoContext = (todos: Todo[], personality: 'endearing' | 'caustic') => {
     const now = new Date().toISOString();
     const totalCount = todos.length;
     const completedCount = todos.filter((todo) => todo.completed).length;

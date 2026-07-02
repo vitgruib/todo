@@ -32,14 +32,31 @@ const PORT = Number(process.env.PORT ?? '8787');
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY ?? '').trim();
 const DEFAULT_GEMMA_MODEL = 'gemma-3-27b-it';
 /** Google removed these from v1beta generateContent; map so old env vars keep working. */
-const LEGACY_GEMMA_MODEL_ALIASES = new Map([['gemma-2-9b-it', DEFAULT_GEMMA_MODEL]]);
-let GEMINI_MODEL = (process.env.GEMINI_MODEL ?? DEFAULT_GEMMA_MODEL).trim();
-if (GEMINI_MODEL.toLowerCase().startsWith('gemini-')) {
+const LEGACY_GEMMA_MODEL_ALIASES = new Map([
+    ['gemma-2-9b-it', DEFAULT_GEMMA_MODEL],
+    ['gemma-2-9b', DEFAULT_GEMMA_MODEL],
+]);
+
+const parseModelFromEnv = (raw) => {
+    if (raw == null || String(raw).trim() === '') {
+        return DEFAULT_GEMMA_MODEL;
+    }
+    let id = String(raw).trim().replace(/^['"]|['"]$/g, '');
+    const lower = id.toLowerCase();
+    if (lower.startsWith('models/')) {
+        id = id.slice('models/'.length).trim();
+    }
+    return id || DEFAULT_GEMMA_MODEL;
+};
+
+let GEMINI_MODEL = parseModelFromEnv(process.env.GEMINI_MODEL);
+const modelKey = GEMINI_MODEL.toLowerCase();
+if (modelKey.startsWith('gemini-')) {
     GEMINI_MODEL = DEFAULT_GEMMA_MODEL;
 } else {
-    const replacement = LEGACY_GEMMA_MODEL_ALIASES.get(GEMINI_MODEL.toLowerCase());
+    const replacement = LEGACY_GEMMA_MODEL_ALIASES.get(modelKey);
     if (replacement) {
-        console.warn(`GEMINI_MODEL "${GEMINI_MODEL}" is no longer available; using ${replacement}.`);
+        console.warn(`GEMINI_MODEL "${process.env.GEMINI_MODEL ?? ''}" is no longer available; using ${replacement}.`);
         GEMINI_MODEL = replacement;
     }
 }
@@ -116,7 +133,7 @@ const normalizeTodoContext = (value) => {
 const normalizeAssistantConfig = (value) => {
     if (!value || typeof value !== 'object') {
         return {
-            personality: 'normal',
+            personality: 'endearing',
             enableActionProposals: true,
             requireConfirmation: true,
             source: 'user',
@@ -126,7 +143,7 @@ const normalizeAssistantConfig = (value) => {
     const candidate = value;
     const personality = candidate.personality === 'endearing' || candidate.personality === 'caustic'
         ? candidate.personality
-        : 'normal';
+        : 'endearing';
 
     return {
         personality,
@@ -138,38 +155,52 @@ const normalizeAssistantConfig = (value) => {
 
 const personalityInstructions = (personality) => {
     if (personality === 'endearing') {
-        return 'Be extremely warm, affectionate, and supportive. Celebrate wins enthusiastically.';
+        return (
+            'Tone: wildly, almost cartoonishly endearing. You are their biggest fan. Pile on sincere hype, tender encouragement, and delighted reactions to every tiny step—like a best friend who thinks they hung the moon. ' +
+            'Go over the top with warmth (still readable; avoid repeating the same phrase every line). Never sound neutral or corporate.'
+        );
     }
-    if (personality === 'caustic') {
-        return 'Use sharp, caustic humor and harsh roasts while still giving useful, actionable guidance.';
-    }
-    return 'Be friendly and practical. Sound like a helpful human—use natural language, a bit of warmth, and avoid stiff or corporate phrasing.';
+    return (
+        'Tone: caustic, heavily sarcastic, and theatrically unimpressed—like a roast comic who secretly wants them to win. ' +
+        'Deliver creative, surprising burns and dry one-liners about the situation (and lightly about the user when it lands a joke), but always steer back to concrete, useful next steps. ' +
+        'Never be cruel about real pain or crises; the bite is playful, not mean-spirited.'
+    );
 };
 
-const actionProposalInstructions = `If the user asks you to edit their todo list, DO NOT claim the change is already done.
-Your "message" must describe only what will happen when the user clicks Apply (e.g. "I'll mark that complete" for complete_todo, "I'll move it to tomorrow" for delay_todo). Never say you have already moved, added, or completed something—the change happens only after they confirm.
-Return a JSON block in this exact shape inside a \`\`\`json fence:
+const actionProposalInstructions = `Todo list edits (add, complete, reschedule) are NEVER automatic.
+
+When the user wants their list changed—or you think a list change would help—you must run a confirmation flow in chat:
+1) First ask what they want changed in plain language (which task by exact title if possible, add vs complete vs move, and dates in YYYY-MM-DD if relevant). If anything is ambiguous, ask follow-up questions. Do NOT output an actionProposal JSON block in this step.
+2) After they answer, restate the exact plan in one short paragraph and ask them to confirm explicitly (e.g. they should reply with clear agreement like "yes, do that" or "confirm" for that plan). Still no JSON until they confirm.
+3) Only after they have explicitly confirmed that specific plan in a later message, output a single \`\`\`json\`\`\` block with the structured proposal so they can use the in-app Confirm button.
+
+Until step 3, your reply must be conversational questions or the restatement+confirmation ask only—no \`\`\`json\`\`\` fence with actionProposal.
+
+When you finally output JSON (step 3 only), DO NOT claim the change is already done. The "message" field must describe what will happen when they click Confirm in the UI (e.g. mark which task complete, add which title, move which task to which date). Never say you already moved, added, or completed anything.
+
+Shape inside the fence:
 {
-  "message": "what will happen when they click Apply (must match the action type)",
+  "message": "what will happen when they click Confirm (must match the action type)",
   "actionProposal": {
     "type": "add_todo" | "complete_todo" | "delay_todo",
     "reason": "why this action helps",
     "todoId": "optional id",
     "todoTitle": "optional exact title (match list exactly)",
     "title": "for add_todo",
-    "deadline": "YYYY-MM-DD (required for add_todo optional date, required for delay_todo)"
+    "deadline": "YYYY-MM-DD (optional for add_todo, required for delay_todo)"
   }
 }
-Use "delay_todo" when the user wants to postpone or reschedule a task: set "type" to "delay_todo", include "todoId" or "todoTitle" to identify the task, and "deadline" to the new date (YYYY-MM-DD).
-If no list edit is requested, do not include actionProposal JSON.`;
+Use "delay_todo" for postpone/reschedule: include "todoId" or "todoTitle" and "deadline" as the new date (YYYY-MM-DD).
+
+If no list edit is in scope, do not include actionProposal JSON.`;
 
 const buildSystemPrompt = (todoContext, assistantConfig) => {
     const toneInstruction = personalityInstructions(assistantConfig.personality);
     const sourceHint =
         assistantConfig.source === 'completion'
-            ? 'The latest prompt is an event update about completed work. Respond briefly with acknowledgement.'
+            ? 'The latest prompt is an event update about completed work. Respond briefly with acknowledgement, still fully in your configured tone (endearing or caustic).'
             : assistantConfig.source === 'checkin'
-              ? 'The latest prompt asks you to do a check-in. Ask how the user is doing in one short line.'
+              ? 'The latest prompt asks you to do a check-in. One short line, in your configured tone (endearing or caustic).'
               : '';
 
     const instructions = [
@@ -178,7 +209,7 @@ const buildSystemPrompt = (todoContext, assistantConfig) => {
         sourceHint,
         assistantConfig.enableActionProposals ? actionProposalInstructions : '',
         assistantConfig.requireConfirmation
-            ? 'Never execute list changes yourself. Always wait for explicit user confirmation first.'
+            ? 'Never execute or imply completed list changes without the user’s explicit confirmation flow above and the in-app Confirm action.'
             : '',
     ]
         .filter(Boolean)
