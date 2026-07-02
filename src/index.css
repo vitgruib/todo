@@ -604,56 +604,6 @@ body.tab-mode {
   cursor: not-allowed;
 }
 
-.active-timer-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  margin-bottom: 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 0.9rem;
-  box-shadow: var(--shadow);
-}
-
-.active-timer-bar::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
-  animation: active-timer-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes active-timer-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-.active-timer-label {
-  font-weight: 600;
-  color: var(--accent);
-  font-size: 0.85rem;
-}
-
-.active-timer-task {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-}
-
-.active-timer-remaining {
-  flex-shrink: 0;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-}
-
 .todo-days-caption {
   display: block;
   margin-top: 0.2rem;
@@ -712,244 +662,6 @@ body.tab-mode {
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
-}
-
-.companion-sidebar {
-  width: clamp(250px, 32%, 320px);
-  background: var(--surface);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--pane-padding);
-}
-
-.companion-frame {
-  width: 100%;
-  height: 100%;
-  min-height: 320px;
-  background: var(--background);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: stretch;
-  justify-content: stretch;
-  overflow: hidden;
-  transition: box-shadow 0.3s ease;
-}
-
-.companion-frame.companion-frame--has-messages {
-  box-shadow:
-    0 0 20px rgba(99, 102, 241, 0.6),
-    0 0 50px rgba(99, 102, 241, 0.5),
-    0 0 90px rgba(99, 102, 241, 0.35),
-    0 0 140px rgba(99, 102, 241, 0.2);
-}
-
-.companion-placeholder {
-  color: var(--text-dim);
-  text-align: center;
-  font-size: 0.875rem;
-}
-
-.companion-chat {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  position: relative;
-}
-
-.companion-chat-header {
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--surface-hover);
-  background: rgba(15, 23, 42, 0.55);
-}
-
-.companion-chat-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.chat-menu-wrap {
-  position: relative;
-}
-
-.chat-menu-toggle {
-  border: 1px solid var(--surface-hover);
-  background: rgba(51, 65, 85, 0.55);
-  color: var(--text);
-  border-radius: 7px;
-  padding: 0.2rem 0.55rem;
-  font-family: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.chat-menu-toggle:hover {
-  border-color: var(--primary);
-}
-
-.chat-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 0.35rem);
-  min-width: 130px;
-  background: rgba(15, 23, 42, 0.98);
-  border: 1px solid var(--surface-hover);
-  border-radius: 7px;
-  box-shadow: var(--shadow);
-  padding: 0.3rem;
-  z-index: 4;
-}
-
-.chat-menu-item {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  border-radius: 6px;
-  padding: 0.45rem 0.55rem;
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.chat-menu-item:hover:not(:disabled) {
-  background: rgba(99, 102, 241, 0.2);
-}
-
-.chat-menu-item:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.companion-chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.chat-bubble {
-  max-width: 95%;
-  border-radius: 10px;
-  padding: 0.5rem 0.6rem;
-  line-height: 1.35;
-  font-size: 0.82rem;
-  white-space: pre-wrap;
-}
-
-.chat-bubble.assistant {
-  background: rgba(51, 65, 85, 0.65);
-  color: var(--text);
-  align-self: flex-start;
-}
-
-.chat-bubble.user {
-  background: rgba(99, 102, 241, 0.26);
-  color: #eef2ff;
-  align-self: flex-end;
-}
-
-.chat-thinking strong {
-  display: block;
-  margin-bottom: 0.25rem;
-}
-
-.chat-thinking-detail {
-  margin: 0;
-  font-size: 0.75rem;
-  font-weight: normal;
-  color: var(--text-dim);
-  white-space: normal;
-}
-
-.action-confirm-card {
-  align-self: stretch;
-  background: rgba(51, 65, 85, 0.72);
-  border: 1px solid var(--surface-hover);
-  border-radius: 10px;
-  padding: 0.6rem;
-}
-
-.action-confirm-card p {
-  margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.35;
-  color: var(--text);
-}
-
-.action-confirm-buttons {
-  display: flex;
-  gap: 0.45rem;
-  margin-top: 0.5rem;
-}
-
-.action-confirm-buttons button {
-  border: 1px solid var(--surface-hover);
-  background: var(--primary);
-  color: #fff;
-  border-radius: 7px;
-  padding: 0.3rem 0.6rem;
-  font-family: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.action-confirm-buttons button.secondary {
-  background: transparent;
-  color: var(--text-dim);
-}
-
-.companion-chat-input {
-  border-top: 1px solid var(--surface-hover);
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  background: rgba(15, 23, 42, 0.55);
-}
-
-.companion-chat-input textarea {
-  width: 100%;
-  resize: none;
-  border-radius: 8px;
-  border: 1px solid var(--surface-hover);
-  background: rgba(30, 41, 59, 0.8);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 0.82rem;
-  padding: 0.55rem 0.6rem;
-}
-
-.companion-chat-input textarea:focus {
-  outline: 1px solid var(--primary);
-}
-
-.companion-chat-input button {
-  align-self: flex-end;
-  border: 1px solid var(--surface-hover);
-  background: var(--primary);
-  color: #fff;
-  border-radius: 7px;
-  padding: 0.4rem 0.8rem;
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.companion-chat-input button:disabled,
-.companion-chat-input textarea:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 @keyframes slideDown {
@@ -1022,14 +734,134 @@ body.tab-mode {
   body.tab-mode .app-container {
     flex-direction: column;
   }
+}
 
-  html.tab-mode .companion-sidebar,
-  body.tab-mode .companion-sidebar {
-    width: auto;
-  }
+/* --- "Do now" deadline reminder popup --- */
+.reminder-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(2px);
+  animation: slideDown 0.18s ease;
+}
 
-  html.tab-mode .companion-frame,
-  body.tab-mode .companion-frame {
-    min-height: 220px;
-  }
+.reminder-popup {
+  width: min(360px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), 0 0 60px rgba(99, 102, 241, 0.25);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.reminder-popup-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--primary);
+}
+
+.reminder-popup-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.reminder-popup-sub {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.reminder-section-label {
+  margin-top: var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.reminder-snooze-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.reminder-custom-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.reminder-custom-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--background);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.reminder-btn {
+  border: 1px solid var(--border);
+  background: var(--surface-hover);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.reminder-btn:hover {
+  border-color: var(--primary);
+}
+
+.reminder-btn--primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.reminder-btn--primary:hover {
+  background: var(--primary-hover);
+}
+
+.reminder-btn--snooze {
+  flex: 1;
+}
+
+.reminder-btn--set {
+  flex-shrink: 0;
+}
+
+.reminder-btn--ghost {
+  margin-top: var(--space-2);
+  background: transparent;
+  color: var(--text-dim);
+}
+
+/* Reminder line inside the per-task focus menu */
+.todo-focus-menu-reminder-current {
+  margin: 0 0 0.3rem;
+  font-size: 0.78rem;
+  color: var(--primary);
+  font-weight: 600;
 }

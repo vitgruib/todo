@@ -1,12 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Draggable } from '@hello-pangea/dnd';
 import { Todo } from '../types';
-
-const MIN_TIMER_MINUTES = 1;
-const MAX_TIMER_MINUTES = 480;
-const MIN_CHECKINS = 1;
-const MAX_CHECKINS = 20;
+import { formatReminderTime, toDateTimeLocalValue } from '../reminders';
 
 interface TodoItemProps {
     todo: Todo;
@@ -15,8 +11,8 @@ interface TodoItemProps {
     onToggle: (id: string) => void;
     onDelete: (id: string) => void;
     onUpdateTodo: (id: string, updates: Partial<Todo>) => void;
-    activeTimerTaskId: string | null;
-    onStartTimer: (taskId: string, taskTitle: string, timerMinutes: number, checkInCount: number) => void;
+    onSetReminder: (todo: Todo, remindAt: number) => void;
+    onClearReminder: (todo: Todo) => void;
 }
 
 function formatAddedToFocus(ts: number): string {
@@ -52,13 +48,14 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     onToggle,
     onDelete,
     onUpdateTodo,
-    activeTimerTaskId,
-    onStartTimer,
+    onSetReminder,
+    onClearReminder,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(todo.title);
     const [focusMenuOpen, setFocusMenuOpen] = useState(false);
     const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+    const [reminderDraft, setReminderDraft] = useState<string>('');
     const inputRef = useRef<HTMLInputElement>(null);
     const focusMenuRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -122,18 +119,15 @@ export const TodoItem: React.FC<TodoItemProps> = ({
         return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
     })();
     const refreshDate = () => {
-        onUpdateTodo(todo.id, { deadline: todayStr, addedToFocusAt: Date.now(), bumpSentAt: undefined });
+        onUpdateTodo(todo.id, { deadline: todayStr, addedToFocusAt: Date.now() });
     };
-    const timerMinutes = Math.max(MIN_TIMER_MINUTES, Math.min(MAX_TIMER_MINUTES, todo.timerMinutes ?? 25));
-    const checkInCount = Math.max(MIN_CHECKINS, Math.min(MAX_CHECKINS, todo.checkInCount ?? 2));
-    const isThisTimerRunning = activeTimerTaskId === todo.id;
-    const isOtherTimerRunning = activeTimerTaskId != null && activeTimerTaskId !== todo.id;
 
-    const startTimer = useCallback(() => {
-        if (timerMinutes < 1 || checkInCount < 1 || isOtherTimerRunning) return;
-        onStartTimer(todo.id, todo.title, timerMinutes, checkInCount);
-        setFocusMenuOpen(false);
-    }, [todo.id, todo.title, timerMinutes, checkInCount, isOtherTimerRunning, onStartTimer]);
+    const commitReminderDraft = () => {
+        if (!reminderDraft) return;
+        const ms = new Date(reminderDraft).getTime();
+        if (Number.isNaN(ms)) return;
+        onSetReminder(todo, ms);
+    };
 
     return (
         <Draggable draggableId={todo.id} index={index}>
@@ -216,47 +210,38 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                                 </button>
                                                 <div className="todo-focus-menu-divider" />
                                                 <div className="todo-focus-menu-timer-block">
-                                                    <div className="todo-focus-menu-timer-heading">Timer</div>
-                                                    <div className="todo-focus-menu-field">
-                                                        <label className="todo-focus-menu-label">Duration (minutes)</label>
-                                                        <input
-                                                            type="number"
-                                                            className="todo-focus-menu-input"
-                                                            min={MIN_TIMER_MINUTES}
-                                                            max={MAX_TIMER_MINUTES}
-                                                            value={timerMinutes}
-                                                            onChange={(e) => {
-                                                                const v = parseInt(e.target.value, 10);
-                                                                if (!Number.isNaN(v)) onUpdateTodo(todo.id, { timerMinutes: Math.max(MIN_TIMER_MINUTES, Math.min(MAX_TIMER_MINUTES, v)) });
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    <div className="todo-focus-menu-field">
-                                                        <label className="todo-focus-menu-label">Check-ins</label>
-                                                        <input
-                                                            type="number"
-                                                            className="todo-focus-menu-input"
-                                                            min={MIN_CHECKINS}
-                                                            max={MAX_CHECKINS}
-                                                            value={checkInCount}
-                                                            onChange={(e) => {
-                                                                const v = parseInt(e.target.value, 10);
-                                                                if (!Number.isNaN(v)) onUpdateTodo(todo.id, { checkInCount: Math.max(MIN_CHECKINS, Math.min(MAX_CHECKINS, v)) });
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    {isOtherTimerRunning && (
-                                                        <p className="todo-focus-menu-hint">One timer at a time.</p>
+                                                    <div className="todo-focus-menu-timer-heading">Deadline reminder</div>
+                                                    {todo.remindAt != null && (
+                                                        <p className="todo-focus-menu-reminder-current">
+                                                            Reminds at {formatReminderTime(todo.remindAt)}
+                                                        </p>
                                                     )}
+                                                    <div className="todo-focus-menu-field">
+                                                        <label className="todo-focus-menu-label">Remind me at</label>
+                                                        <input
+                                                            type="datetime-local"
+                                                            className="todo-focus-menu-input"
+                                                            value={reminderDraft || (todo.remindAt != null ? toDateTimeLocalValue(todo.remindAt) : '')}
+                                                            onChange={(e) => setReminderDraft(e.target.value)}
+                                                        />
+                                                    </div>
                                                     <button
                                                         type="button"
                                                         className="todo-focus-menu-start"
-                                                        onClick={startTimer}
-                                                        disabled={isOtherTimerRunning || isThisTimerRunning}
-                                                        title={isThisTimerRunning ? 'Timer running' : isOtherTimerRunning ? 'One timer at a time' : undefined}
+                                                        onClick={() => { commitReminderDraft(); setReminderDraft(''); setFocusMenuOpen(false); }}
+                                                        disabled={!reminderDraft}
                                                     >
-                                                        {isThisTimerRunning ? 'Timer running' : 'Start timer'}
+                                                        {todo.remindAt != null ? 'Update reminder' : 'Set reminder'}
                                                     </button>
+                                                    {todo.remindAt != null && (
+                                                        <button
+                                                            type="button"
+                                                            className="todo-focus-menu-item"
+                                                            onClick={() => { onClearReminder(todo); setReminderDraft(''); setFocusMenuOpen(false); }}
+                                                        >
+                                                            Clear reminder
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <div className="todo-focus-menu-divider" />
                                             </>

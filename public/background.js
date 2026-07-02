@@ -7,21 +7,10 @@ const DEFAULT_ALARM_SOUND = 'alarm';
 const ALARM_NAME = 'todo-ai-auto-open-alarm';
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 const PLAY_SOUND_MESSAGE_TYPE = 'todo-ai-play-alarm-sound';
-const CHAT_REQUEST_MESSAGE_TYPE = 'todo-ai-chat-request';
-const CHAT_CANCEL_MESSAGE_TYPE = 'todo-ai-chat-cancel';
-const CHAT_STORAGE_KEY = 'todo_ai_companion_chat_v2';
-const CHAT_RESULTS_KEY = 'todo-ai-chat-results-v2';
-const CHECKIN_REQUEST_KEY = 'todo-ai-checkin-request-v1';
-const TASK_CHECKIN_ALARM_PREFIX = 'todo-ai-task-checkin-';
-const TASK_CHECKIN_REQUEST_KEY = 'todo-ai-task-checkin-request-v1';
-const TASK_CHECKIN_META_KEY = 'todo-ai-task-checkin-meta-v1';
-const TIMER_BADGE_BLUE = '#2563eb';
-const MAX_CHAT_RESULTS = 25;
-const CHAT_REQUEST_TIMEOUT_MS = 90_000;
-const CHAT_CANCELLED_MESSAGE = 'Request cancelled by user.';
-const CHAT_TIMEOUT_MESSAGE = 'Request timed out. Please try again.';
+const REMINDER_ALARM_PREFIX = 'todo-ai-reminder-';
+const SCHEDULE_REMINDER_MESSAGE_TYPE = 'todo-ai-schedule-reminder';
+const CLEAR_REMINDER_MESSAGE_TYPE = 'todo-ai-clear-reminder';
 let creatingOffscreenDocument = null;
-const activeChatControllers = new Map();
 const EXTENSION_PAGE_OPEN_COOLDOWN_MS = 60_000;
 let lastExtensionPageOpenAt = 0;
 
@@ -96,150 +85,6 @@ function openOrFocusExtensionPage() {
     });
 }
 
-function parseJson(raw) {
-    try {
-        return JSON.parse(raw);
-    } catch {
-        return null;
-    }
-}
-
-function storageGet(keys) {
-    return new Promise((resolve) => {
-        chrome.storage.local.get(keys, (result) => resolve(result));
-    });
-}
-
-function storageSet(items) {
-    return new Promise((resolve) => {
-        chrome.storage.local.set(items, () => resolve());
-    });
-}
-
-async function storeChatResult(result) {
-    const existingRaw = await storageGet([CHAT_RESULTS_KEY]);
-    const existing = existingRaw?.[CHAT_RESULTS_KEY];
-    const normalized =
-        existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
-
-    normalized[result.requestId] = result;
-
-    const trimmed = Object.fromEntries(
-        Object.entries(normalized)
-            .filter(([, value]) => value && typeof value === 'object')
-            .sort(([, a], [, b]) => {
-                const aTime = typeof a.completedAt === 'number' ? a.completedAt : 0;
-                const bTime = typeof b.completedAt === 'number' ? b.completedAt : 0;
-                return bTime - aTime;
-            })
-            .slice(0, MAX_CHAT_RESULTS)
-    );
-
-    await storageSet({ [CHAT_RESULTS_KEY]: trimmed });
-}
-
-function normalizeChatMessages(messages) {
-    if (!Array.isArray(messages)) {
-        return [];
-    }
-
-    return messages
-        .filter((message) => typeof message?.text === 'string' && message.text.trim().length > 0)
-        .slice(-10)
-        .map((message) => ({
-            role: message.role === 'assistant' ? 'assistant' : 'user',
-            text: String(message.text),
-        }));
-}
-
-function normalizeTodoContext(todoContext) {
-    if (todoContext === null || todoContext === undefined) {
-        return null;
-    }
-
-    if (typeof todoContext === 'string') {
-        const trimmed = todoContext.trim();
-        return trimmed.length > 0 ? trimmed.slice(0, 20_000) : null;
-    }
-
-    if (typeof todoContext === 'object') {
-        try {
-            return JSON.stringify(todoContext).slice(0, 20_000);
-        } catch {
-            return null;
-        }
-    }
-
-    return null;
-}
-
-function normalizeAssistantConfig(config) {
-    if (!config || typeof config !== 'object') {
-        return null;
-    }
-
-    const candidate = config;
-    const p = typeof candidate.personality === 'string' ? candidate.personality : 'endearing';
-    const personality = p === 'endearing' || p === 'caustic' ? p : 'endearing';
-    return {
-        personality,
-        enableActionProposals: Boolean(candidate.enableActionProposals),
-        requireConfirmation: Boolean(candidate.requireConfirmation),
-        source: typeof candidate.source === 'string' ? candidate.source : 'user',
-    };
-}
-
-async function runChatRequest(requestId, proxyUrl, messages, todoContext, assistantConfig) {
-    const controller = new AbortController();
-    activeChatControllers.set(requestId, controller);
-    const timeoutId = setTimeout(() => {
-        controller.abort(CHAT_TIMEOUT_MESSAGE);
-    }, CHAT_REQUEST_TIMEOUT_MS);
-
-    try {
-        const response = await fetch(proxyUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages, todoContext, assistantConfig }),
-            signal: controller.signal,
-        });
-
-        const rawText = await response.text();
-        const payload = parseJson(rawText);
-
-        if (!response.ok) {
-            const errorDetail =
-                (payload && typeof payload.error === 'string' && payload.error) ||
-                rawText.trim() ||
-                `Proxy request failed (${response.status} ${response.statusText})`;
-            throw new Error(`HTTP ${response.status} ${response.statusText}: ${errorDetail}`);
-        }
-
-        const text =
-            (payload && typeof payload.text === 'string' && payload.text.trim()) ||
-            (typeof rawText === 'string' ? rawText.trim() : '');
-
-        return {
-            requestId,
-            ok: true,
-            text: text || 'Proxy returned an empty response.',
-            completedAt: Date.now(),
-        };
-    } catch (error) {
-        if (controller.signal.aborted || error?.name === 'AbortError') {
-            const reason = controller.signal?.reason;
-            const message = typeof reason === 'string' && reason.trim().length > 0
-                ? reason
-                : CHAT_CANCELLED_MESSAGE;
-            throw new Error(message);
-        }
-        throw error;
-    } finally {
-        clearTimeout(timeoutId);
-        activeChatControllers.delete(requestId);
-    }
-}
-
 async function hasOffscreenDocument() {
     const offscreenDocumentUrl = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 
@@ -268,7 +113,7 @@ async function ensureOffscreenDocument() {
         creatingOffscreenDocument = chrome.offscreen.createDocument({
             url: OFFSCREEN_DOCUMENT_PATH,
             reasons: ['AUDIO_PLAYBACK'],
-            justification: 'Play an alarm sound when the auto-open interval finishes.',
+            justification: 'Play an alarm sound when a reminder or the auto-open interval fires.',
         }).finally(() => {
             creatingOffscreenDocument = null;
         });
@@ -295,7 +140,7 @@ async function playAlarmSound() {
             });
         });
     } catch (error) {
-        console.error('Failed to play interval alarm sound:', error);
+        console.error('Failed to play alarm sound:', error);
     }
 }
 
@@ -322,135 +167,43 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         void playAlarmSound();
         return;
     }
-    // Task check-in alarms: open tab and set storage so UI can show "Check-in: [task]"
-    if (alarm.name.startsWith(TASK_CHECKIN_ALARM_PREFIX)) {
-        const payload = alarm.name.slice(TASK_CHECKIN_ALARM_PREFIX.length);
-        const [taskId, indexStr] = payload.split('|');
-        const index = indexStr ? parseInt(indexStr, 10) : 0;
-        if (taskId) {
-            chrome.storage.local.get([TASK_CHECKIN_META_KEY], (result) => {
-                const meta = result[TASK_CHECKIN_META_KEY] || {};
-                const taskTitle = (meta[taskId] && meta[taskId].title) ? meta[taskId].title : '';
-                const totalCheckIns = (meta[taskId] && meta[taskId].totalCheckIns) ? meta[taskId].totalCheckIns : 1;
-                chrome.storage.local.set({
-                    [TASK_CHECKIN_REQUEST_KEY]: {
-                        taskId,
-                        taskTitle,
-                        index,
-                        at: Date.now(),
-                    },
-                });
-                if (typeof chrome.action !== 'undefined' && index >= totalCheckIns - 1) {
-                    chrome.action.setBadgeText({ text: '' });
-                }
-            });
-        }
+
+    // "Do now" reminder: open the tab so the in-app popup can prompt the user.
+    if (alarm.name.startsWith(REMINDER_ALARM_PREFIX)) {
         openOrFocusExtensionPage();
+        void playAlarmSound();
     }
 });
 
-const SCHEDULE_TASK_CHECKINS_MESSAGE_TYPE = 'todo-ai-schedule-task-checkins';
-
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === SCHEDULE_TASK_CHECKINS_MESSAGE_TYPE) {
+    if (message?.type === SCHEDULE_REMINDER_MESSAGE_TYPE) {
         const taskId = typeof message.taskId === 'string' ? message.taskId.trim() : '';
-        const taskTitle = typeof message.taskTitle === 'string' ? message.taskTitle : '';
-        const timerMinutes = typeof message.timerMinutes === 'number' && message.timerMinutes >= 1 ? message.timerMinutes : 0;
-        const checkInCount = typeof message.checkInCount === 'number' && message.checkInCount >= 1 ? Math.floor(message.checkInCount) : 0;
-        if (!taskId || timerMinutes < 1 || checkInCount < 1) {
-            sendResponse({ ok: false, error: 'Invalid schedule-task-checkins payload.' });
+        const remindAt = typeof message.remindAt === 'number' && Number.isFinite(message.remindAt)
+            ? message.remindAt
+            : 0;
+        if (!taskId || remindAt <= 0) {
+            sendResponse({ ok: false, error: 'Invalid schedule-reminder payload.' });
             return false;
         }
-        // Only one task timer at a time: clear all task-checkin alarms, then create this task's alarms
-        chrome.alarms.getAll((alarms) => {
-            alarms.filter((a) => a.name.startsWith(TASK_CHECKIN_ALARM_PREFIX)).forEach((a) => chrome.alarms.clear(a.name));
-            const prefix = TASK_CHECKIN_ALARM_PREFIX + taskId + '|';
-            chrome.storage.local.get([TASK_CHECKIN_META_KEY], (result) => {
-                const meta = result[TASK_CHECKIN_META_KEY] || {};
-                meta[taskId] = { title: taskTitle, totalCheckIns: checkInCount };
-                chrome.storage.local.set({ [TASK_CHECKIN_META_KEY]: meta });
-            });
-            const intervalMinutes = timerMinutes / checkInCount;
-            for (let i = 0; i < checkInCount; i++) {
-                const delayInMinutes = intervalMinutes * (i + 1);
-                chrome.alarms.create(prefix + String(i), { delayInMinutes });
-            }
-            if (typeof chrome.action !== 'undefined') {
-                chrome.action.setBadgeText({ text: '\u2022' });
-                chrome.action.setBadgeBackgroundColor({ color: TIMER_BADGE_BLUE });
-            }
+        const alarmName = REMINDER_ALARM_PREFIX + taskId;
+        chrome.alarms.clear(alarmName, () => {
+            chrome.alarms.create(alarmName, { when: remindAt });
             sendResponse({ ok: true });
         });
         return true;
     }
 
-    if (message?.type === CHAT_CANCEL_MESSAGE_TYPE) {
-        const requestId = typeof message.requestId === 'string' ? message.requestId.trim() : '';
-        if (!requestId) {
-            sendResponse({ ok: false, error: 'Missing requestId.' });
+    if (message?.type === CLEAR_REMINDER_MESSAGE_TYPE) {
+        const taskId = typeof message.taskId === 'string' ? message.taskId.trim() : '';
+        if (!taskId) {
+            sendResponse({ ok: false, error: 'Missing taskId.' });
             return false;
         }
-
-        const controller = activeChatControllers.get(requestId);
-        if (!controller) {
-            sendResponse({ ok: false, error: 'No active request found.' });
-            return false;
-        }
-
-        controller.abort(CHAT_CANCELLED_MESSAGE);
-        sendResponse({ ok: true });
-        return false;
-    }
-
-    if (!message || message.type !== CHAT_REQUEST_MESSAGE_TYPE) {
-        return undefined;
-    }
-
-    const requestId = typeof message.requestId === 'string' ? message.requestId.trim() : '';
-    const proxyUrl = typeof message.proxyUrl === 'string' ? message.proxyUrl.trim() : '';
-    const messages = normalizeChatMessages(message.messages);
-    const todoContext = normalizeTodoContext(message.todoContext);
-    const assistantConfig = normalizeAssistantConfig(message.assistantConfig);
-
-    if (!requestId || !proxyUrl || messages.length === 0) {
-        sendResponse({ ok: false, error: 'Invalid chat request payload.' });
-        return false;
-    }
-
-    const chatState = message.chatState;
-    if (
-        chatState &&
-        typeof chatState === 'object' &&
-        Array.isArray(chatState.messages) &&
-        typeof chatState.statusMessage === 'string'
-    ) {
-        storageSet({
-            [CHAT_STORAGE_KEY]: {
-                messages: chatState.messages.slice(-100),
-                statusMessage: chatState.statusMessage,
-                pendingRequestId: requestId,
-            },
-        }).then(() => {});
-    }
-
-    void (async () => {
-        try {
-            const result = await runChatRequest(requestId, proxyUrl, messages, todoContext, assistantConfig);
-            await storeChatResult(result);
+        chrome.alarms.clear(REMINDER_ALARM_PREFIX + taskId, () => {
             sendResponse({ ok: true });
-            openOrFocusExtensionPage();
-        } catch (error) {
-            const messageText = error instanceof Error ? error.message : String(error);
-            await storeChatResult({
-                requestId,
-                ok: false,
-                error: messageText || 'Unknown background chat error',
-                completedAt: Date.now(),
-            });
-            sendResponse({ ok: false, error: messageText });
-            openOrFocusExtensionPage();
-        }
-    })();
+        });
+        return true;
+    }
 
-    return true;
+    return undefined;
 });

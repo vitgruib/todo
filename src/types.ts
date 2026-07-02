@@ -11,12 +11,8 @@ export interface Todo {
     deadline?: string;
     steps: Step[];
     createdAt: number;
-    /** Minutes to run when starting a task timer */
-    timerMinutes?: number;
-    /** Number of check-ins during the timer (evenly spaced) */
-    checkInCount?: number;
-    /** When the task was last moved into Focus (for bump-after duration) */
+    /** When the task was last moved into Focus (drives the "days since added" caption) */
     addedToFocusAt?: number;
-    /** When we last sent a "bump" nudge for this task in focus */
-    bumpSentAt?: number;
+    /** Epoch ms for a "do now" reminder. When it passes, a popup asks you to do it or set a new deadline. */
+    remindAt?: number;
 }

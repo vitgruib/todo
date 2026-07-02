@@ -5,8 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "start": "node server/gemini-proxy.mjs",
-    "proxy": "node server/gemini-proxy.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },

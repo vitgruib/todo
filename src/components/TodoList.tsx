@@ -9,8 +9,8 @@ interface TodoListProps {
     onToggle: (id: string) => void;
     onDelete: (id: string) => void;
     onUpdateTodo: (id: string, updates: Partial<Todo>) => void;
-    activeTimerTaskId: string | null;
-    onStartTimer: (taskId: string, taskTitle: string, timerMinutes: number, checkInCount: number) => void;
+    onSetReminder: (todo: Todo, remindAt: number) => void;
+    onClearReminder: (todo: Todo) => void;
 }
 
 export const TodoList: React.FC<TodoListProps> = ({
@@ -19,8 +19,8 @@ export const TodoList: React.FC<TodoListProps> = ({
     onToggle,
     onDelete,
     onUpdateTodo,
-    activeTimerTaskId,
-    onStartTimer,
+    onSetReminder,
+    onClearReminder,
 }) => {
     const getSectionId = (todo: Todo) => {
         if (!todo.deadline) return 'someday';
@@ -81,8 +81,8 @@ export const TodoList: React.FC<TodoListProps> = ({
                                             onToggle={onToggle}
                                             onDelete={onDelete}
                                             onUpdateTodo={onUpdateTodo}
-                                            activeTimerTaskId={activeTimerTaskId}
-                                            onStartTimer={onStartTimer}
+                                            onSetReminder={onSetReminder}
+                                            onClearReminder={onClearReminder}
                                         />
                                     ))}
                                     {provided.placeholder}
