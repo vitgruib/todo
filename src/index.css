@@ -243,12 +243,70 @@ body.tab-mode {
 
 .todo-form {
   display: flex;
+  flex-direction: column;
   gap: var(--space-3);
   background: var(--surface);
   padding: 0.9rem;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+}
+
+.todo-form-row {
+  display: flex;
+  gap: var(--space-3);
   align-items: center;
+}
+
+.todo-form-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.todo-type-toggle {
+  display: inline-flex;
+  border: 1px solid var(--surface-hover);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.todo-type-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 0.4rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.todo-type-btn + .todo-type-btn {
+  border-left: 1px solid var(--surface-hover);
+}
+
+.todo-type-btn--active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.todo-form-due-select,
+.todo-form-due-custom {
+  background: var(--background);
+  border: 1px solid var(--surface-hover);
+  color: var(--text);
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  min-height: 2rem;
+}
+
+.todo-form-due-select {
+  cursor: pointer;
 }
 
 .todo-input {
@@ -561,6 +619,14 @@ body.tab-mode {
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
 }
 
+select.todo-focus-menu-input {
+  cursor: pointer;
+}
+
+.todo-focus-menu-date {
+  margin-top: 0.4rem;
+}
+
 .todo-focus-menu-hint {
   margin: 0.35rem 0 0.5rem;
   font-size: 0.8rem;
@@ -598,6 +664,25 @@ body.tab-mode {
   font-size: 0.75rem;
   color: var(--text-dim);
   font-weight: 400;
+}
+
+.todo-delay-badge {
+  display: inline-block;
+  margin-top: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 999px;
+  color: var(--text-dim);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  cursor: default;
+}
+
+.todo-delay-badge--snark {
+  color: #fff;
+  background: #d97706;
+  border-color: #d97706;
 }
 
 .todo-details {
@@ -699,6 +784,127 @@ body.tab-mode {
   font-size: 0.85rem;
 }
 
+/* Archive */
+.archive-section {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+.archive-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.35rem 0.45rem;
+  border-radius: var(--radius);
+}
+
+.archive-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.archive-count {
+  background: var(--surface-hover);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0;
+}
+
+.archive-body {
+  margin-top: var(--space-2);
+}
+
+.archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.archive-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0.5rem 0.65rem;
+  background: rgba(30, 41, 59, 0.3);
+  border-radius: var(--radius);
+}
+
+.archive-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.archive-item-title {
+  color: var(--text-dim);
+  text-decoration: line-through;
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archive-item-time {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
+.archive-item-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.archive-item-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 8px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.archive-item-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.archive-item-btn--danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
+}
+
+.archive-clear {
+  margin-top: var(--space-2);
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0.3rem 0.45rem;
+}
+
+.archive-clear:hover {
+  color: var(--danger);
+}
+
 @media (max-width: 720px) {
   .header-top {
     align-items: flex-start;
@@ -770,6 +976,18 @@ body.tab-mode {
   margin: 0 0 var(--space-2);
   font-size: 0.85rem;
   color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.reminder-popup-delay {
+  margin: 0 0 var(--space-2);
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.12);
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  border-radius: 8px;
   line-height: 1.4;
 }
 
@@ -852,6 +1070,14 @@ body.tab-mode {
   font-size: 0.78rem;
   color: var(--primary);
   font-weight: 600;
+}
+
+.todo-focus-menu-delay-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: #d97706;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .reminder-custom-input--full {

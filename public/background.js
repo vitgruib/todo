@@ -13,6 +13,10 @@ const CLEAR_REMINDER_MESSAGE_TYPE = 'todo-ai-clear-reminder';
 let creatingOffscreenDocument = null;
 const EXTENSION_PAGE_OPEN_COOLDOWN_MS = 60_000;
 let lastExtensionPageOpenAt = 0;
+const REMINDER_POPUP_WIDTH = 420;
+const REMINDER_POPUP_HEIGHT = 640;
+// A due reminder keeps re-opening its popup at this cadence until it's completed, rescheduled, or relegated.
+const REMINDER_RENAG_PERIOD_MINUTES = 5;
 
 function normalizeIntervalMinutes(value) {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -82,6 +86,33 @@ function openOrFocusExtensionPage() {
         }
 
         chrome.tabs.create({ url: tabViewUrl });
+    });
+}
+
+/** Reminders must be addressed, so they always force-open a small focused popup window (ignores the auto-open cooldown and finds/refocuses an existing reminder window instead of stacking new ones). */
+function openReminderPopupWindow() {
+    const extensionPageBaseUrl = chrome.runtime.getURL('index.html');
+    const tabViewUrl = chrome.runtime.getURL('index.html?view=tab');
+
+    chrome.windows.getAll({ populate: true }, (windows) => {
+        const existing = windows.find(
+            (win) =>
+                win.type === 'popup' &&
+                win.tabs?.some((tab) => typeof tab.url === 'string' && tab.url.startsWith(extensionPageBaseUrl))
+        );
+
+        if (existing && existing.id !== undefined) {
+            chrome.windows.update(existing.id, { focused: true, drawAttention: true });
+            return;
+        }
+
+        chrome.windows.create({
+            url: tabViewUrl,
+            type: 'popup',
+            width: REMINDER_POPUP_WIDTH,
+            height: REMINDER_POPUP_HEIGHT,
+            focused: true,
+        });
     });
 }
 
@@ -168,9 +199,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         return;
     }
 
-    // "Do now" reminder: open the tab so the in-app popup can prompt the user.
+    // "Do now" reminder: force-open a focused popup window so it can't be missed, and keep
+    // re-nagging (the alarm below is created with a repeat period) until it's addressed.
     if (alarm.name.startsWith(REMINDER_ALARM_PREFIX)) {
-        openOrFocusExtensionPage();
+        openReminderPopupWindow();
         void playAlarmSound();
     }
 });
@@ -187,7 +219,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }
         const alarmName = REMINDER_ALARM_PREFIX + taskId;
         chrome.alarms.clear(alarmName, () => {
-            chrome.alarms.create(alarmName, { when: remindAt });
+            chrome.alarms.create(alarmName, { when: remindAt, periodInMinutes: REMINDER_RENAG_PERIOD_MINUTES });
             sendResponse({ ok: true });
         });
         return true;

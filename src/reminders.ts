@@ -43,16 +43,27 @@ export const DUE_PRESETS = [
 /** Default due date for a brand-new short-run task (1 day out). */
 export const DEFAULT_DUE_MS = 1 * DAY_MS;
 
-/** Short relative "Due …" caption for a short-run task. */
-export const formatDueCaption = (remindAt: number): string => {
-    const diff = remindAt - Date.now();
+/**
+ * Live countdown caption for a short-run task's due date.
+ * Granularity: minutes+seconds under 1 hour, hours+minutes under 1 day, days+hours otherwise.
+ * Pass `now` explicitly (e.g. from a ticking clock state) so the caption updates every render.
+ */
+export const formatDueCaption = (remindAt: number, now: number = Date.now()): string => {
+    const diff = remindAt - now;
     if (diff <= 0) return 'Overdue';
-    const mins = Math.round(diff / 60000);
-    if (mins < 60) return `Due in ${mins}m`;
-    const hours = Math.round(diff / HOUR_MS);
-    if (hours < 48) return `Due in ${hours}h`;
-    const days = Math.round(diff / DAY_MS);
-    return `Due in ${days}d`;
+    if (diff < HOUR_MS) {
+        const mins = Math.floor(diff / 60000);
+        const secs = Math.floor((diff % 60000) / 1000);
+        return `Due in ${mins}m ${secs}s`;
+    }
+    if (diff < DAY_MS) {
+        const hours = Math.floor(diff / HOUR_MS);
+        const mins = Math.floor((diff % HOUR_MS) / 60000);
+        return `Due in ${hours}h ${mins}m`;
+    }
+    const days = Math.floor(diff / DAY_MS);
+    const hours = Math.floor((diff % DAY_MS) / HOUR_MS);
+    return `Due in ${days}d ${hours}h`;
 };
 
 /** Format an epoch-ms reminder for display, e.g. "3:05 PM" (today) or "Tue 3:05 PM". */
@@ -66,6 +77,38 @@ export const formatReminderTime = (remindAt: number): string => {
         d.getDate() === today.getDate();
     if (sameDay) return time;
     return `${d.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+};
+
+/** Format a completion timestamp for the archive, e.g. "Jul 8, 3:05 PM" (or "Yesterday 3:05 PM" / "Today 3:05 PM"). */
+export const formatCompletedAt = (completedAt: number, now: number = Date.now()): string => {
+    const d = new Date(completedAt);
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const startOfDay = (ms: number) => {
+        const x = new Date(ms);
+        x.setHours(0, 0, 0, 0);
+        return x.getTime();
+    };
+    const dayDiff = Math.round((startOfDay(now) - startOfDay(completedAt)) / DAY_MS);
+    if (dayDiff === 0) return `Today ${time}`;
+    if (dayDiff === 1) return `Yesterday ${time}`;
+    return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+};
+
+/** Snarky remarks shown once a task has been delayed more than once (first delay gets no judgment). */
+const SNARKY_DELAY_LINES = [
+    "Sure, push it back again. It's not like it's going anywhere.",
+    "Third time's the charm, right?",
+    "At this rate it'll graduate to a long-term goal on its own.",
+    "Bold strategy, ignoring it a little longer.",
+    "The deadline fairy is losing patience with you.",
+    "Future you says thanks for absolutely nothing.",
+    "Maybe it just wants to be a long-term goal. Let it.",
+];
+
+/** Snarky line for a task's Nth delay, or null if it hasn't earned one yet (N < 2). */
+export const getSnarkyDelayLine = (delayCount: number): string | null => {
+    if (delayCount < 2) return null;
+    return SNARKY_DELAY_LINES[(delayCount - 2) % SNARKY_DELAY_LINES.length];
 };
 
 /** Convert an epoch-ms value into a `datetime-local` input value in local time. */

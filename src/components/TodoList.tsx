@@ -1,9 +1,11 @@
 import React from 'react';
-import { Todo } from '../types';
+import { PushBackReminders, Todo } from '../types';
 import { TodoItem } from './TodoItem';
 
 interface TodoListProps {
     todos: Todo[];
+    now: number;
+    pushBackReminders: PushBackReminders;
     onToggle: (id: string) => void;
     onDelete: (id: string) => void;
     onUpdateTodo: (id: string, updates: Partial<Todo>) => void;
@@ -13,6 +15,8 @@ interface TodoListProps {
 
 export const TodoList: React.FC<TodoListProps> = ({
     todos,
+    now,
+    pushBackReminders,
     onToggle,
     onDelete,
     onUpdateTodo,
@@ -48,6 +52,8 @@ export const TodoList: React.FC<TodoListProps> = ({
                                     key={todo.id}
                                     todo={todo}
                                     sectionId={id}
+                                    now={now}
+                                    pushBackReminders={pushBackReminders}
                                     onToggle={onToggle}
                                     onDelete={onDelete}
                                     onUpdateTodo={onUpdateTodo}
