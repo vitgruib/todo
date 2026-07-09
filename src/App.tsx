@@ -5,13 +5,9 @@ import { TodoForm } from './components/TodoForm';
 import { ReminderPopup } from './components/ReminderPopup';
 import { ArchiveList } from './components/ArchiveList';
 import { clearReminderAlarm, scheduleReminderAlarm } from './reminders';
-import type { PushBackReminders, Todo } from './types';
+import type { Todo } from './types';
 
-const INTERVAL_MINUTES_KEY = 'todo-ai-auto-open-interval-minutes-v2';
 const ALARM_SOUND_KEY = 'todo-ai-alarm-sound-v2';
-const PUSH_BACK_REMINDERS_KEY = 'todo-ai-push-back-reminders-v1';
-const DEFAULT_INTERVAL_MINUTES = 120;
-const MIN_INTERVAL_MINUTES = 1;
 const ALARM_SOUND_OPTIONS = [
     { value: 'alarm', label: 'Alarm' },
     { value: 'ding', label: 'Ding' },
@@ -25,24 +21,6 @@ const ALARM_SOUND_VALUES = new Set<AlarmSoundOption>(
     ALARM_SOUND_OPTIONS.map((option) => option.value)
 );
 
-const PUSH_BACK_REMINDERS_OPTIONS: { value: PushBackReminders; label: string }[] = [
-    { value: 'none', label: 'None' },
-    { value: 'normal', label: 'Normal' },
-    { value: 'snarky', label: 'Snarky' },
-];
-const DEFAULT_PUSH_BACK_REMINDERS: PushBackReminders = 'snarky';
-const PUSH_BACK_REMINDERS_VALUES = new Set<PushBackReminders>(
-    PUSH_BACK_REMINDERS_OPTIONS.map((option) => option.value)
-);
-
-const normalizeIntervalMinutes = (value: number) => {
-    if (!Number.isFinite(value)) {
-        return DEFAULT_INTERVAL_MINUTES;
-    }
-
-    return Math.max(MIN_INTERVAL_MINUTES, Math.round(value));
-};
-
 const normalizeAlarmSound = (value: unknown): AlarmSoundOption => {
     if (typeof value !== 'string') {
         return DEFAULT_ALARM_SOUND;
@@ -51,16 +29,6 @@ const normalizeAlarmSound = (value: unknown): AlarmSoundOption => {
     return ALARM_SOUND_VALUES.has(value as AlarmSoundOption)
         ? (value as AlarmSoundOption)
         : DEFAULT_ALARM_SOUND;
-};
-
-const normalizePushBackReminders = (value: unknown): PushBackReminders => {
-    if (typeof value !== 'string') {
-        return DEFAULT_PUSH_BACK_REMINDERS;
-    }
-
-    return PUSH_BACK_REMINDERS_VALUES.has(value as PushBackReminders)
-        ? (value as PushBackReminders)
-        : DEFAULT_PUSH_BACK_REMINDERS;
 };
 
 function App() {
@@ -76,9 +44,7 @@ function App() {
         deleteArchived,
         clearArchive,
     } = useTodos();
-    const [intervalMinutes, setIntervalMinutes] = useState<number>(DEFAULT_INTERVAL_MINUTES);
     const [alarmSound, setAlarmSound] = useState<AlarmSoundOption>(DEFAULT_ALARM_SOUND);
-    const [pushBackReminders, setPushBackReminders] = useState<PushBackReminders>(DEFAULT_PUSH_BACK_REMINDERS);
     const [hasLoadedSettings, setHasLoadedSettings] = useState<boolean>(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
     const [now, setNow] = useState<number>(Date.now());
@@ -114,10 +80,19 @@ function App() {
         return () => clearTimeout(id);
     }, [todos, now]);
 
-    // Pushing back a due date that was already set counts as a delay; giving a
-    // long-term goal its first due date does not.
+    // Extending a due date that was already set counts as a push-back — for every method
+    // (popup reschedule, focus-menu update, custom date, duration) and by any amount later.
+    // Pulling the deadline earlier, or giving a long-term goal its first due date, does not
+    // count. Adjustments made within 5 minutes of the task being created are treated as
+    // corrections (e.g. replacing the default due date), not push-backs.
+    const DELAY_GRACE_MS = 5 * 60 * 1000;
     const setReminder = (todo: Todo, remindAt: number) => {
-        const delayCount = todo.remindAt != null ? (todo.delayCount ?? 0) + 1 : (todo.delayCount ?? 0);
+        const withinGracePeriod = Date.now() - todo.createdAt < DELAY_GRACE_MS;
+        const isPushBack =
+            todo.remindAt != null && remindAt > todo.remindAt && !withinGracePeriod;
+        const delayCount = isPushBack
+            ? (todo.delayCount ?? 0) + 1
+            : (todo.delayCount ?? 0);
         updateTodo(todo.id, { remindAt, delayCount });
         scheduleReminderAlarm(todo.id, remindAt);
         setNow(Date.now());
@@ -148,34 +123,20 @@ function App() {
     useEffect(() => {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             chrome.storage.local.get(
-                [INTERVAL_MINUTES_KEY, ALARM_SOUND_KEY, PUSH_BACK_REMINDERS_KEY],
+                [ALARM_SOUND_KEY],
                 (result) => {
-                    const normalizedInterval = normalizeIntervalMinutes(result[INTERVAL_MINUTES_KEY]);
                     const normalizedSound = normalizeAlarmSound(result[ALARM_SOUND_KEY]);
-                    const normalizedPushBack = normalizePushBackReminders(result[PUSH_BACK_REMINDERS_KEY]);
-                    setIntervalMinutes(normalizedInterval);
                     setAlarmSound(normalizedSound);
-                    setPushBackReminders(normalizedPushBack);
                     setHasLoadedSettings(true);
                 }
             );
             return;
         }
 
-        const savedInterval = localStorage.getItem(INTERVAL_MINUTES_KEY);
-        if (savedInterval) {
-            const normalizedInterval = normalizeIntervalMinutes(Number(savedInterval));
-            setIntervalMinutes(normalizedInterval);
-        }
-
         const savedSound = localStorage.getItem(ALARM_SOUND_KEY);
         if (savedSound) {
             const normalizedSound = normalizeAlarmSound(savedSound);
             setAlarmSound(normalizedSound);
-        }
-        const savedPushBack = localStorage.getItem(PUSH_BACK_REMINDERS_KEY);
-        if (savedPushBack) {
-            setPushBackReminders(normalizePushBackReminders(savedPushBack));
         }
 
         setHasLoadedSettings(true);
@@ -187,17 +148,13 @@ function App() {
         }
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set({
-                [INTERVAL_MINUTES_KEY]: intervalMinutes,
                 [ALARM_SOUND_KEY]: alarmSound,
-                [PUSH_BACK_REMINDERS_KEY]: pushBackReminders,
             });
             return;
         }
 
-        localStorage.setItem(INTERVAL_MINUTES_KEY, String(intervalMinutes));
         localStorage.setItem(ALARM_SOUND_KEY, alarmSound);
-        localStorage.setItem(PUSH_BACK_REMINDERS_KEY, pushBackReminders);
-    }, [alarmSound, hasLoadedSettings, intervalMinutes, pushBackReminders]);
+    }, [alarmSound, hasLoadedSettings]);
 
     useEffect(() => {
         if (!isSettingsOpen) {
@@ -221,17 +178,8 @@ function App() {
         };
     }, [isSettingsOpen]);
 
-    const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const parsed = Number(e.target.value);
-        setIntervalMinutes(normalizeIntervalMinutes(parsed));
-    };
-
     const handleAlarmSoundChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setAlarmSound(normalizeAlarmSound(e.target.value));
-    };
-
-    const handlePushBackRemindersChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setPushBackReminders(normalizePushBackReminders(e.target.value));
     };
 
     const openFullScreenView = () => {
@@ -278,17 +226,6 @@ function App() {
                                     <div className="settings-menu-panel">
                                         <div className="settings-menu-grid">
                                             <div className="interval-setting">
-                                                <label htmlFor="intervalMinutes">Auto-open interval (minutes)</label>
-                                                <input
-                                                    id="intervalMinutes"
-                                                    type="number"
-                                                    min={MIN_INTERVAL_MINUTES}
-                                                    step={1}
-                                                    value={intervalMinutes}
-                                                    onChange={handleIntervalChange}
-                                                />
-                                            </div>
-                                            <div className="interval-setting">
                                                 <label htmlFor="alarmSound">Alarm sound</label>
                                                 <select
                                                     id="alarmSound"
@@ -296,20 +233,6 @@ function App() {
                                                     onChange={handleAlarmSoundChange}
                                                 >
                                                     {ALARM_SOUND_OPTIONS.map((option) => (
-                                                        <option key={option.value} value={option.value}>
-                                                            {option.label}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div className="interval-setting">
-                                                <label htmlFor="pushBackReminders">Push back reminders</label>
-                                                <select
-                                                    id="pushBackReminders"
-                                                    value={pushBackReminders}
-                                                    onChange={handlePushBackRemindersChange}
-                                                >
-                                                    {PUSH_BACK_REMINDERS_OPTIONS.map((option) => (
                                                         <option key={option.value} value={option.value}>
                                                             {option.label}
                                                         </option>
@@ -329,7 +252,6 @@ function App() {
                     <TodoList
                         todos={todos}
                         now={clockNow}
-                        pushBackReminders={pushBackReminders}
                         onToggle={toggleTodo}
                         onDelete={deleteTodo}
                         onUpdateTodo={updateTodo}
@@ -349,7 +271,6 @@ function App() {
             {activeReminder && (
                 <ReminderPopup
                     todo={activeReminder}
-                    pushBackReminders={pushBackReminders}
                     onDone={() => handleReminderDone(activeReminder)}
                     onReschedule={(remindAt) => setReminder(activeReminder, remindAt)}
                     onRelegate={() => clearReminder(activeReminder)}

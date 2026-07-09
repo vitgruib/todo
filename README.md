@@ -1,75 +1,55 @@
-# Todo AI Extension
+# Todo Extension
 
-A smart todo list extension for Chrome/Edge with drag-and-drop support and a Gemma-backed AI companion.
+A Chrome/Edge (Manifest V3) todo list that splits work into **Short run** (tasks with a due date) and **Long run** (long-term goals with no due date). When a short-run task's deadline passes, the extension force-opens a focused reminder window and keeps nagging until you deal with it.
 
 ## Prerequisites
 
 **Node.js is required** to build this project.
-1.  Download and install Node.js from [nodejs.org](https://nodejs.org/).
-2.  Verify installation by running `node -v` and `npm -v` in your terminal.
+1. Download and install Node.js from [nodejs.org](https://nodejs.org/).
+2. Verify with `node -v` and `npm -v`.
 
 ## Setup
 
-1.  Open your terminal in this directory.
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
+```bash
+npm install
+```
 
 ## Development
 
-To start the development server (for web view):
+Run the web view (a plain browser build, no extension APIs) with hot reload:
+
 ```bash
 npm run dev
 ```
 
-## AI Backend (Gemma Proxy)
+In dev mode there are no `chrome.*` APIs, so reminders are driven by an in-app timer/overlay instead of the background service worker.
 
-The extension uses a local backend proxy so your API key stays server-side. Default model is Gemma 3 27B (`gemma-3-27b-it`).
+## Building for Chrome / Edge
 
-1. Create `server/.env`.
-2. Add:
-   ```env
-   GEMINI_API_KEY=YOUR_KEY
-   GEMINI_MODEL=gemma-3-27b-it
-   PORT=8787
-   ```
-   You can omit `GEMINI_MODEL` to use the default. If an old deploy still has `GEMINI_MODEL=gemma-2-9b-it`, the proxy remaps it to `gemma-3-27b-it` after you redeploy current server code.
-3. Start proxy:
-   ```bash
-   npm run proxy
-   ```
-4. Keep the proxy running at `http://localhost:8787`.
+```bash
+npm run build
+```
 
-## Building for Chrome
+This runs a TypeScript type-check and produces a `dist/` folder. Then:
 
-1.  Build the project:
-    ```bash
-    npm run build
-    ```
-    This will create a `dist` folder.
-
-2.  Open Chrome and go to `chrome://extensions`.
-3.  Enable **Developer mode** (top right).
-4.  Click **Load unpacked**.
-5.  Select the `dist` folder in this project directory.
-
-## Building for Microsoft Edge
-
-1.  Build the project (if not already done):
-    ```bash
-    npm run build
-    ```
-2.  Open Edge and go to `edge://extensions`.
-3.  Enable **Developer mode** (toggle in the sidebar or bottom left).
-4.  Click **Load unpacked**.
-5.  Select the `dist` folder in this project directory.
+1. Open `chrome://extensions` (or `edge://extensions`).
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select the `dist` folder.
 
 ## Features
 
--   **Add Todos**: Title and optional deadline.
--   **Sub-steps**: Break down tasks into smaller steps.
--   **Drag and Drop**: Reorder your priorities.
--   **Persistence**: Data is saved automatically.
--   **Gemma AI Chat**: Companion chat powered by backend Gemma proxy.
--   **Dark Mode UI**: Clean, modern aesthetic.
+- **Two categories** — *Short run* (has a due date) and *Long run* (no due date). Adding a task gives it a due date; relegating a task drops the due date and moves it to Long run.
+- **Flexible due dates** — presets (30 min → 1 week), a custom date & time picker, or "time until due" (e.g. 90 minutes).
+- **Live countdown** — each short-run task shows a ticking "Due in …" caption.
+- **Due reminders** — when a deadline passes, a focused reminder popup window opens (with an alarm sound) so it can't be missed. It re-nags every 5 minutes — closing and reopening the window each time — until you complete, reschedule, or relegate the task.
+- **Push-back counter** — extending a task's deadline (by any amount, via any method) marks it as delayed and shows a "⏳ Delayed N×" badge. Pulling the deadline earlier, or setting a first due date, doesn't count.
+- **Archive** — completed tasks move to an archive ordered by completion time; restore or clear them.
+- **Settings** — choose the alarm sound.
+- **Full-screen view** — open the extension in a full browser tab.
+- **Persistence** — data is saved automatically (`chrome.storage.local` in the extension, `localStorage` in dev).
+
+## Project layout
+
+- `src/` — React + TypeScript UI (components, `hooks/useTodos`, `reminders.ts`).
+- `public/background.js` — MV3 service worker: schedules due reminders (`chrome.alarms`), opens the reminder popup window, and plays the alarm sound via an offscreen document.
+- `public/manifest.json` — extension manifest (permissions: `storage`, `alarms`, `tabs`, `offscreen`).

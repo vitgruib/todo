@@ -1,16 +1,16 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { PushBackReminders, Todo } from '../types';
-import { formatReminderTime, toDateTimeLocalValue, formatDueCaption, getSnarkyDelayLine, DUE_PRESETS } from '../reminders';
+import { Todo } from '../types';
+import { formatReminderTime, toDateTimeLocalValue, formatDueCaption, DUE_PRESETS, DURATION_UNITS, DurationUnit, durationToRemindAt } from '../reminders';
 
 const CUSTOM = 'custom';
-const DEFAULT_PRESET_INDEX = 3; // 1 day
+const DURATION = 'duration';
+const DEFAULT_PRESET_INDEX = 4; // 1 day
 
 interface TodoItemProps {
     todo: Todo;
     sectionId: string;
     now: number;
-    pushBackReminders: PushBackReminders;
     onToggle: (id: string) => void;
     onDelete: (id: string) => void;
     onUpdateTodo: (id: string, updates: Partial<Todo>) => void;
@@ -22,7 +22,6 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     todo,
     sectionId,
     now,
-    pushBackReminders,
     onToggle,
     onDelete,
     onUpdateTodo,
@@ -35,6 +34,8 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
     const [dueSelection, setDueSelection] = useState<string>(DUE_PRESETS[DEFAULT_PRESET_INDEX].value);
     const [customDueValue, setCustomDueValue] = useState<string>('');
+    const [durationAmount, setDurationAmount] = useState<string>('');
+    const [durationUnit, setDurationUnit] = useState<DurationUnit>('hours');
     const inputRef = useRef<HTMLInputElement>(null);
     const focusMenuRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -93,8 +94,7 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     };
 
     const isShortRun = sectionId === 'short-run';
-    const showDelayMarker = pushBackReminders !== 'none' && !!todo.delayCount;
-    const delaySnarkLine = pushBackReminders === 'snarky' ? getSnarkyDelayLine(todo.delayCount ?? 0) : null;
+    const showDelayMarker = !!todo.delayCount;
 
     const commitDueSelection = () => {
         let ms: number;
@@ -102,12 +102,22 @@ export const TodoItem: React.FC<TodoItemProps> = ({
             const parsed = new Date(customDueValue).getTime();
             if (Number.isNaN(parsed)) return;
             ms = parsed;
+        } else if (dueSelection === DURATION) {
+            const parsed = durationToRemindAt(durationAmount, durationUnit);
+            if (parsed === undefined) return;
+            ms = parsed;
         } else {
             const preset = DUE_PRESETS.find((option) => option.value === dueSelection);
             if (!preset) return;
             ms = Date.now() + preset.ms;
         }
         onSetReminder(todo, ms);
+    };
+
+    const resetDueSelection = () => {
+        setDueSelection(DUE_PRESETS[DEFAULT_PRESET_INDEX].value);
+        setCustomDueValue('');
+        setDurationAmount('');
     };
 
     return (
@@ -152,10 +162,7 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                         <span className="todo-days-caption">{formatDueCaption(todo.remindAt, now)}</span>
                                     )}
                                     {isShortRun && showDelayMarker && (
-                                        <span
-                                            className={`todo-delay-badge${delaySnarkLine ? ' todo-delay-badge--snark' : ''}`}
-                                            title={delaySnarkLine ?? undefined}
-                                        >
+                                        <span className="todo-delay-badge">
                                             ⏳ Delayed {todo.delayCount}×
                                         </span>
                                     )}
@@ -192,7 +199,6 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                             {isShortRun && showDelayMarker && (
                                                 <p className="todo-focus-menu-delay-note">
                                                     Delayed {todo.delayCount}× already
-                                                    {delaySnarkLine && <> — {delaySnarkLine}</>}
                                                 </p>
                                             )}
                                             <div className="todo-focus-menu-field">
@@ -219,7 +225,8 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                                             {option.label}
                                                         </option>
                                                     ))}
-                                                    <option value={CUSTOM}>Pick your own date…</option>
+                                                    <option value={CUSTOM}>Pick a date &amp; time…</option>
+                                                    <option value={DURATION}>Enter time until due…</option>
                                                 </select>
                                                 {dueSelection === CUSTOM && (
                                                     <input
@@ -229,17 +236,43 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                                         onChange={(e) => setCustomDueValue(e.target.value)}
                                                     />
                                                 )}
+                                                {dueSelection === DURATION && (
+                                                    <span className="todo-focus-menu-duration">
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            className="todo-focus-menu-input todo-focus-menu-duration-amount"
+                                                            value={durationAmount}
+                                                            onChange={(e) => setDurationAmount(e.target.value)}
+                                                            placeholder="e.g. 90"
+                                                        />
+                                                        <select
+                                                            className="todo-focus-menu-input todo-focus-menu-duration-unit"
+                                                            value={durationUnit}
+                                                            onChange={(e) => setDurationUnit(e.target.value as DurationUnit)}
+                                                        >
+                                                            {DURATION_UNITS.map((unit) => (
+                                                                <option key={unit.value} value={unit.value}>
+                                                                    {unit.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </span>
+                                                )}
                                             </div>
                                             <button
                                                 type="button"
                                                 className="todo-focus-menu-start"
                                                 onClick={() => {
                                                     commitDueSelection();
-                                                    setDueSelection(DUE_PRESETS[DEFAULT_PRESET_INDEX].value);
-                                                    setCustomDueValue('');
+                                                    resetDueSelection();
                                                     setFocusMenuOpen(false);
                                                 }}
-                                                disabled={dueSelection === CUSTOM && !customDueValue}
+                                                disabled={
+                                                    (dueSelection === CUSTOM && !customDueValue) ||
+                                                    (dueSelection === DURATION &&
+                                                        durationToRemindAt(durationAmount, durationUnit) === undefined)
+                                                }
                                             >
                                                 {isShortRun ? 'Update due date' : 'Move to short run'}
                                             </button>
@@ -247,7 +280,7 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                                 <button
                                                     type="button"
                                                     className="todo-focus-menu-item"
-                                                    onClick={() => { onClearReminder(todo); setCustomDueValue(''); setFocusMenuOpen(false); }}
+                                                    onClick={() => { onClearReminder(todo); resetDueSelection(); setFocusMenuOpen(false); }}
                                                 >
                                                     Relegate to long-term goal
                                                 </button>

@@ -1,33 +1,36 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { PushBackReminders, Todo } from '../types';
-import { DUE_PRESETS, getSnarkyDelayLine, toDateTimeLocalValue } from '../reminders';
+import type { Todo } from '../types';
+import { DUE_PRESETS, DURATION_UNITS, DurationUnit, durationToRemindAt, toDateTimeLocalValue } from '../reminders';
 
 interface ReminderPopupProps {
     todo: Todo;
-    pushBackReminders: PushBackReminders;
     onDone: () => void;
     onReschedule: (remindAt: number) => void;
     onRelegate: () => void;
 }
 
 const CUSTOM = 'custom';
+const DURATION = 'duration';
 
 export const ReminderPopup: React.FC<ReminderPopupProps> = ({
     todo,
-    pushBackReminders,
     onDone,
     onReschedule,
     onRelegate,
 }) => {
-    const [selection, setSelection] = useState<string>(DUE_PRESETS[3].value); // default: 1 day
+    const [selection, setSelection] = useState<string>(
+        DUE_PRESETS.find((option) => option.value === '1d')?.value ?? DUE_PRESETS[0].value
+    ); // default: 1 day
     const [customValue, setCustomValue] = useState<string>(() =>
         toDateTimeLocalValue(Date.now() + 60 * 60_000)
     );
+    const [durationAmount, setDurationAmount] = useState<string>('');
+    const [durationUnit, setDurationUnit] = useState<DurationUnit>('hours');
 
     const isCustom = selection === CUSTOM;
-    const showDelayMarker = pushBackReminders !== 'none' && !!todo.delayCount;
-    const delaySnarkLine = pushBackReminders === 'snarky' ? getSnarkyDelayLine(todo.delayCount ?? 0) : null;
+    const isDuration = selection === DURATION;
+    const showDelayMarker = !!todo.delayCount;
 
     const handleSet = () => {
         if (isCustom) {
@@ -36,6 +39,13 @@ export const ReminderPopup: React.FC<ReminderPopupProps> = ({
                 return;
             }
             onReschedule(ms);
+            return;
+        }
+        if (isDuration) {
+            const ms = durationToRemindAt(durationAmount, durationUnit);
+            if (ms !== undefined) {
+                onReschedule(ms);
+            }
             return;
         }
         const preset = DUE_PRESETS.find((option) => option.value === selection);
@@ -56,7 +66,6 @@ export const ReminderPopup: React.FC<ReminderPopupProps> = ({
                 {showDelayMarker && (
                     <p className="reminder-popup-delay">
                         ⏳ Delayed {todo.delayCount}× already
-                        {delaySnarkLine && <> — {delaySnarkLine}</>}
                     </p>
                 )}
 
@@ -76,7 +85,8 @@ export const ReminderPopup: React.FC<ReminderPopupProps> = ({
                                 {option.label}
                             </option>
                         ))}
-                        <option value={CUSTOM}>Pick your own date…</option>
+                        <option value={CUSTOM}>Pick a date &amp; time…</option>
+                        <option value={DURATION}>Enter time until due…</option>
                     </select>
                     <button type="button" className="reminder-btn reminder-btn--set" onClick={handleSet}>
                         Set
@@ -89,6 +99,29 @@ export const ReminderPopup: React.FC<ReminderPopupProps> = ({
                         value={customValue}
                         onChange={(e) => setCustomValue(e.target.value)}
                     />
+                )}
+                {isDuration && (
+                    <div className="reminder-custom-row">
+                        <input
+                            type="number"
+                            min="1"
+                            className="reminder-custom-input"
+                            value={durationAmount}
+                            onChange={(e) => setDurationAmount(e.target.value)}
+                            placeholder="e.g. 90"
+                        />
+                        <select
+                            className="reminder-custom-input"
+                            value={durationUnit}
+                            onChange={(e) => setDurationUnit(e.target.value as DurationUnit)}
+                        >
+                            {DURATION_UNITS.map((unit) => (
+                                <option key={unit.value} value={unit.value}>
+                                    {unit.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                 )}
 
                 <button type="button" className="reminder-btn reminder-btn--ghost" onClick={onRelegate}>

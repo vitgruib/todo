@@ -1,39 +1,16 @@
-const INTERVAL_MINUTES_KEY = 'todo-ai-auto-open-interval-minutes-v2';
 const ALARM_SOUND_KEY = 'todo-ai-alarm-sound-v2';
-const DEFAULT_INTERVAL_MINUTES = 120;
-const MIN_INTERVAL_MINUTES = 1;
 const ALARM_SOUND_OPTIONS = ['alarm', 'ding', 'happy', 'hard-clock', 'chime'];
 const DEFAULT_ALARM_SOUND = 'alarm';
-const ALARM_NAME = 'todo-ai-auto-open-alarm';
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 const PLAY_SOUND_MESSAGE_TYPE = 'todo-ai-play-alarm-sound';
 const REMINDER_ALARM_PREFIX = 'todo-ai-reminder-';
 const SCHEDULE_REMINDER_MESSAGE_TYPE = 'todo-ai-schedule-reminder';
 const CLEAR_REMINDER_MESSAGE_TYPE = 'todo-ai-clear-reminder';
 let creatingOffscreenDocument = null;
-const EXTENSION_PAGE_OPEN_COOLDOWN_MS = 60_000;
-let lastExtensionPageOpenAt = 0;
 const REMINDER_POPUP_WIDTH = 420;
 const REMINDER_POPUP_HEIGHT = 640;
 // A due reminder keeps re-opening its popup at this cadence until it's completed, rescheduled, or relegated.
 const REMINDER_RENAG_PERIOD_MINUTES = 5;
-
-function normalizeIntervalMinutes(value) {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-        return DEFAULT_INTERVAL_MINUTES;
-    }
-
-    return Math.max(MIN_INTERVAL_MINUTES, Math.round(value));
-}
-
-function scheduleAlarm(intervalMinutes) {
-    chrome.alarms.clear(ALARM_NAME, () => {
-        chrome.alarms.create(ALARM_NAME, {
-            delayInMinutes: intervalMinutes,
-            periodInMinutes: intervalMinutes,
-        });
-    });
-}
 
 function normalizeAlarmSound(value) {
     if (typeof value !== 'string') {
@@ -43,75 +20,46 @@ function normalizeAlarmSound(value) {
     return ALARM_SOUND_OPTIONS.includes(value) ? value : DEFAULT_ALARM_SOUND;
 }
 
-function hydrateSettingsAndSchedule() {
-    chrome.storage.local.get([INTERVAL_MINUTES_KEY, ALARM_SOUND_KEY], (result) => {
-        const intervalMinutes = normalizeIntervalMinutes(result[INTERVAL_MINUTES_KEY]);
-        const alarmSound = normalizeAlarmSound(result[ALARM_SOUND_KEY]);
-        const updates = {};
-
-        if (result[INTERVAL_MINUTES_KEY] !== intervalMinutes) {
-            updates[INTERVAL_MINUTES_KEY] = intervalMinutes;
-        }
-
-        if (result[ALARM_SOUND_KEY] !== alarmSound) {
-            updates[ALARM_SOUND_KEY] = alarmSound;
-        }
-
-        if (Object.keys(updates).length > 0) {
-            chrome.storage.local.set(updates);
-        }
-
-        scheduleAlarm(intervalMinutes);
-    });
-}
-
-function openOrFocusExtensionPage() {
-    const now = Date.now();
-    if (now - lastExtensionPageOpenAt < EXTENSION_PAGE_OPEN_COOLDOWN_MS) {
-        return;
-    }
-    lastExtensionPageOpenAt = now;
-
-    const tabViewUrl = chrome.runtime.getURL('index.html?view=tab');
-    const extensionPageBaseUrl = chrome.runtime.getURL('index.html');
-
-    chrome.tabs.query({}, (tabs) => {
-        const firstMatch = tabs.find((tab) =>
-            typeof tab.url === 'string' && tab.url.startsWith(extensionPageBaseUrl)
-        );
-
-        if (firstMatch && firstMatch.id !== undefined) {
-            chrome.tabs.update(firstMatch.id, { active: true, url: tabViewUrl });
-            return;
-        }
-
-        chrome.tabs.create({ url: tabViewUrl });
-    });
-}
-
-/** Reminders must be addressed, so they always force-open a small focused popup window (ignores the auto-open cooldown and finds/refocuses an existing reminder window instead of stacking new ones). */
+/** Reminders must be addressed, so each nag closes any existing reminder popup window(s) and opens a fresh one, so it can't be ignored in the background. */
 function openReminderPopupWindow() {
     const extensionPageBaseUrl = chrome.runtime.getURL('index.html');
     const tabViewUrl = chrome.runtime.getURL('index.html?view=tab');
 
-    chrome.windows.getAll({ populate: true }, (windows) => {
-        const existing = windows.find(
-            (win) =>
-                win.type === 'popup' &&
-                win.tabs?.some((tab) => typeof tab.url === 'string' && tab.url.startsWith(extensionPageBaseUrl))
-        );
-
-        if (existing && existing.id !== undefined) {
-            chrome.windows.update(existing.id, { focused: true, drawAttention: true });
-            return;
-        }
-
+    const createFreshWindow = () => {
         chrome.windows.create({
             url: tabViewUrl,
             type: 'popup',
             width: REMINDER_POPUP_WIDTH,
             height: REMINDER_POPUP_HEIGHT,
             focused: true,
+        });
+    };
+
+    chrome.windows.getAll({ populate: true }, (windows) => {
+        const existingIds = windows
+            .filter(
+                (win) =>
+                    win.type === 'popup' &&
+                    win.id !== undefined &&
+                    win.tabs?.some((tab) => typeof tab.url === 'string' && tab.url.startsWith(extensionPageBaseUrl))
+            )
+            .map((win) => win.id);
+
+        if (existingIds.length === 0) {
+            createFreshWindow();
+            return;
+        }
+
+        // Close the stale reminder window(s) first, then pop a fresh one so it grabs attention again.
+        let remaining = existingIds.length;
+        existingIds.forEach((id) => {
+            chrome.windows.remove(id, () => {
+                void chrome.runtime.lastError;
+                remaining -= 1;
+                if (remaining === 0) {
+                    createFreshWindow();
+                }
+            });
         });
     });
 }
@@ -144,7 +92,7 @@ async function ensureOffscreenDocument() {
         creatingOffscreenDocument = chrome.offscreen.createDocument({
             url: OFFSCREEN_DOCUMENT_PATH,
             reasons: ['AUDIO_PLAYBACK'],
-            justification: 'Play an alarm sound when a reminder or the auto-open interval fires.',
+            justification: 'Play an alarm sound when a reminder fires.',
         }).finally(() => {
             creatingOffscreenDocument = null;
         });
@@ -175,32 +123,9 @@ async function playAlarmSound() {
     }
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-    hydrateSettingsAndSchedule();
-});
-
-chrome.runtime.onStartup.addListener(() => {
-    hydrateSettingsAndSchedule();
-});
-
-chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'local' || !changes[INTERVAL_MINUTES_KEY]) {
-        return;
-    }
-
-    const intervalMinutes = normalizeIntervalMinutes(changes[INTERVAL_MINUTES_KEY].newValue);
-    scheduleAlarm(intervalMinutes);
-});
-
 chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === ALARM_NAME) {
-        openOrFocusExtensionPage();
-        void playAlarmSound();
-        return;
-    }
-
-    // "Do now" reminder: force-open a focused popup window so it can't be missed, and keep
-    // re-nagging (the alarm below is created with a repeat period) until it's addressed.
+    // "Do now" reminder: force-open a focused popup window, and keep re-nagging (the alarm below
+    // is created with a repeat period) until it's addressed — each nag closes and reopens the window.
     if (alarm.name.startsWith(REMINDER_ALARM_PREFIX)) {
         openReminderPopupWindow();
         void playAlarmSound();

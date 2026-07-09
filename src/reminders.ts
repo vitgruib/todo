@@ -27,21 +27,50 @@ export const clearReminderAlarm = (taskId: string) => {
     runtime.sendMessage({ type: CLEAR_REMINDER_MESSAGE_TYPE, taskId }, () => {});
 };
 
-const HOUR_MS = 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
 /** How far out a short-run task can be (re)scheduled. `ms` is added to "now". */
 export const DUE_PRESETS = [
+    { value: '30m', label: '30 minutes', ms: 30 * MINUTE_MS },
     { value: '1h', label: '1 hour', ms: 1 * HOUR_MS },
-    { value: '3h', label: '3 hours', ms: 3 * HOUR_MS },
+    { value: '2h', label: '2 hours', ms: 2 * HOUR_MS },
+    { value: '4h', label: '4 hours', ms: 4 * HOUR_MS },
     { value: '6h', label: '6 hours', ms: 6 * HOUR_MS },
     { value: '1d', label: '1 day', ms: 1 * DAY_MS },
+    { value: '2d', label: '2 days', ms: 2 * DAY_MS },
     { value: '3d', label: '3 days', ms: 3 * DAY_MS },
     { value: '1w', label: '1 week', ms: 7 * DAY_MS },
 ] as const;
 
 /** Default due date for a brand-new short-run task (1 day out). */
 export const DEFAULT_DUE_MS = 1 * DAY_MS;
+
+/** Units offered when a user types how much time until the deadline. */
+export const DURATION_UNITS = [
+    { value: 'minutes', label: 'minutes', ms: MINUTE_MS },
+    { value: 'hours', label: 'hours', ms: HOUR_MS },
+    { value: 'days', label: 'days', ms: DAY_MS },
+    { value: 'weeks', label: 'weeks', ms: 7 * DAY_MS },
+] as const;
+
+export type DurationUnit = (typeof DURATION_UNITS)[number]['value'];
+
+/**
+ * Convert a "how much time until due" input into a due timestamp relative to now.
+ * Returns undefined for a missing/invalid/non-positive amount.
+ */
+export const durationToRemindAt = (
+    amount: string,
+    unit: DurationUnit,
+    now: number = Date.now()
+): number | undefined => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return undefined;
+    const found = DURATION_UNITS.find((u) => u.value === unit);
+    return found ? now + value * found.ms : undefined;
+};
 
 /**
  * Live countdown caption for a short-run task's due date.
@@ -92,23 +121,6 @@ export const formatCompletedAt = (completedAt: number, now: number = Date.now())
     if (dayDiff === 0) return `Today ${time}`;
     if (dayDiff === 1) return `Yesterday ${time}`;
     return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
-};
-
-/** Snarky remarks shown once a task has been delayed more than once (first delay gets no judgment). */
-const SNARKY_DELAY_LINES = [
-    "Sure, push it back again. It's not like it's going anywhere.",
-    "Third time's the charm, right?",
-    "At this rate it'll graduate to a long-term goal on its own.",
-    "Bold strategy, ignoring it a little longer.",
-    "The deadline fairy is losing patience with you.",
-    "Future you says thanks for absolutely nothing.",
-    "Maybe it just wants to be a long-term goal. Let it.",
-];
-
-/** Snarky line for a task's Nth delay, or null if it hasn't earned one yet (N < 2). */
-export const getSnarkyDelayLine = (delayCount: number): string | null => {
-    if (delayCount < 2) return null;
-    return SNARKY_DELAY_LINES[(delayCount - 2) % SNARKY_DELAY_LINES.length];
 };
 
 /** Convert an epoch-ms value into a `datetime-local` input value in local time. */

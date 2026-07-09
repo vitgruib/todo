@@ -41,3 +41,6 @@ Desktop.ini
 # Test / coverage
 coverage/
 .nyc_output/
+
+# Claude Code local settings
+.claude/settings.local.json

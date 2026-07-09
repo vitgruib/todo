@@ -1,26 +1,33 @@
 import React, { useState } from 'react';
-import { DUE_PRESETS, toDateTimeLocalValue } from '../reminders';
+import { DUE_PRESETS, DURATION_UNITS, DurationUnit, durationToRemindAt, toDateTimeLocalValue } from '../reminders';
 
 interface TodoFormProps {
     onAdd: (title: string, remindAt?: number) => void;
 }
 
 const CUSTOM = 'custom';
-const DEFAULT_PRESET_INDEX = 3; // 1 day
+const DURATION = 'duration';
+const DEFAULT_PRESET_INDEX = 4; // 1 day
 
 export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
     const [title, setTitle] = useState('');
     const [taskType, setTaskType] = useState<'short-run' | 'long-run'>('short-run');
     const [dueSelection, setDueSelection] = useState<string>(DUE_PRESETS[DEFAULT_PRESET_INDEX].value);
     const [customDueValue, setCustomDueValue] = useState<string>('');
+    const [durationAmount, setDurationAmount] = useState<string>('');
+    const [durationUnit, setDurationUnit] = useState<DurationUnit>('hours');
 
     const isCustom = dueSelection === CUSTOM;
+    const isDuration = dueSelection === DURATION;
 
     const resolveRemindAt = (): number | undefined => {
         if (taskType === 'long-run') return undefined;
         if (isCustom) {
             const ms = new Date(customDueValue).getTime();
             return Number.isNaN(ms) ? undefined : ms;
+        }
+        if (isDuration) {
+            return durationToRemindAt(durationAmount, durationUnit);
         }
         const preset = DUE_PRESETS.find((option) => option.value === dueSelection);
         return preset ? Date.now() + preset.ms : undefined;
@@ -31,6 +38,7 @@ export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
         const trimmed = title.trim();
         if (!trimmed) return;
         if (taskType === 'short-run' && isCustom && !customDueValue) return;
+        if (taskType === 'short-run' && isDuration && durationToRemindAt(durationAmount, durationUnit) === undefined) return;
         onAdd(trimmed, resolveRemindAt());
         setTitle('');
     };
@@ -87,7 +95,8 @@ export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
                                     {option.label}
                                 </option>
                             ))}
-                            <option value={CUSTOM}>Pick your own date…</option>
+                            <option value={CUSTOM}>Pick a date &amp; time…</option>
+                            <option value={DURATION}>Enter time until due…</option>
                         </select>
                         {isCustom && (
                             <input
@@ -96,6 +105,29 @@ export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
                                 value={customDueValue}
                                 onChange={(e) => setCustomDueValue(e.target.value)}
                             />
+                        )}
+                        {isDuration && (
+                            <span className="todo-form-due-duration">
+                                <input
+                                    type="number"
+                                    min="1"
+                                    className="todo-form-due-duration-amount"
+                                    value={durationAmount}
+                                    onChange={(e) => setDurationAmount(e.target.value)}
+                                    placeholder="e.g. 90"
+                                />
+                                <select
+                                    className="todo-form-due-duration-unit"
+                                    value={durationUnit}
+                                    onChange={(e) => setDurationUnit(e.target.value as DurationUnit)}
+                                >
+                                    {DURATION_UNITS.map((unit) => (
+                                        <option key={unit.value} value={unit.value}>
+                                            {unit.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </span>
                         )}
                     </>
                 )}

@@ -294,7 +294,9 @@ body.tab-mode {
 }
 
 .todo-form-due-select,
-.todo-form-due-custom {
+.todo-form-due-custom,
+.todo-form-due-duration-amount,
+.todo-form-due-duration-unit {
   background: var(--background);
   border: 1px solid var(--surface-hover);
   color: var(--text);
@@ -305,8 +307,18 @@ body.tab-mode {
   min-height: 2rem;
 }
 
-.todo-form-due-select {
+.todo-form-due-select,
+.todo-form-due-duration-unit {
   cursor: pointer;
+}
+
+.todo-form-due-duration {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.todo-form-due-duration-amount {
+  width: 5rem;
 }
 
 .todo-input {
@@ -627,6 +639,21 @@ select.todo-focus-menu-input {
   margin-top: 0.4rem;
 }
 
+.todo-focus-menu-duration {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.todo-focus-menu-duration-amount {
+  width: 5rem;
+  flex: 0 0 auto;
+}
+
+.todo-focus-menu-duration-unit {
+  flex: 1;
+}
+
 .todo-focus-menu-hint {
   margin: 0.35rem 0 0.5rem;
   font-size: 0.8rem;
@@ -677,12 +704,6 @@ select.todo-focus-menu-input {
   background: var(--surface-hover);
   border: 1px solid var(--border);
   cursor: default;
-}
-
-.todo-delay-badge--snark {
-  color: #fff;
-  background: #d97706;
-  border-color: #d97706;
 }
 
 .todo-details {
@@ -1040,10 +1061,12 @@ select.todo-focus-menu-input {
 }
 
 .reminder-btn--primary {
+  align-self: flex-start;
   background: var(--primary);
   border-color: var(--primary);
   color: #fff;
-  font-size: 0.95rem;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.7rem;
 }
 
 .reminder-btn--primary:hover {
@@ -1055,7 +1078,17 @@ select.todo-focus-menu-input {
 }
 
 .reminder-btn--set {
+  flex: 1;
   flex-shrink: 0;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-size: 1rem;
+  padding: 0.7rem 1.1rem;
+}
+
+.reminder-btn--set:hover {
+  background: var(--primary-hover);
 }
 
 .reminder-btn--ghost {

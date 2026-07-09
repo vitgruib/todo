@@ -4,9 +4,6 @@ export interface Step {
     completed: boolean;
 }
 
-/** Controls whether/how the delay marker & remarks show up when a task's due date gets pushed back. */
-export type PushBackReminders = 'none' | 'normal' | 'snarky';
-
 export interface Todo {
     id: string;
     title: string;
