@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { DUE_PRESETS, DURATION_UNITS, DurationUnit, durationToRemindAt, toDateTimeLocalValue } from '../reminders';
+import {
+    DUE_PRESETS,
+    DURATION_UNITS,
+    DurationUnit,
+    durationToRemindAt,
+    toDateTimeLocalValue,
+} from '../reminders';
 
 interface TodoFormProps {
     onAdd: (title: string, remindAt?: number) => void;
@@ -12,7 +18,9 @@ const DEFAULT_PRESET_INDEX = 4; // 1 day
 export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
     const [title, setTitle] = useState('');
     const [taskType, setTaskType] = useState<'short-run' | 'long-run'>('short-run');
-    const [dueSelection, setDueSelection] = useState<string>(DUE_PRESETS[DEFAULT_PRESET_INDEX].value);
+    const [dueSelection, setDueSelection] = useState<string>(
+        DUE_PRESETS[DEFAULT_PRESET_INDEX].value,
+    );
     const [customDueValue, setCustomDueValue] = useState<string>('');
     const [durationAmount, setDurationAmount] = useState<string>('');
     const [durationUnit, setDurationUnit] = useState<DurationUnit>('hours');
@@ -38,7 +46,12 @@ export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
         const trimmed = title.trim();
         if (!trimmed) return;
         if (taskType === 'short-run' && isCustom && !customDueValue) return;
-        if (taskType === 'short-run' && isDuration && durationToRemindAt(durationAmount, durationUnit) === undefined) return;
+        if (
+            taskType === 'short-run' &&
+            isDuration &&
+            durationToRemindAt(durationAmount, durationUnit) === undefined
+        )
+            return;
         onAdd(trimmed, resolveRemindAt());
         setTitle('');
     };
@@ -85,7 +98,9 @@ export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
                                 setDueSelection(value);
                                 if (value === CUSTOM && !customDueValue) {
                                     setCustomDueValue(
-                                        toDateTimeLocalValue(Date.now() + DUE_PRESETS[DEFAULT_PRESET_INDEX].ms)
+                                        toDateTimeLocalValue(
+                                            Date.now() + DUE_PRESETS[DEFAULT_PRESET_INDEX].ms,
+                                        ),
                                     );
                                 }
                             }}
@@ -119,7 +134,9 @@ export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
                                 <select
                                     className="todo-form-due-duration-unit"
                                     value={durationUnit}
-                                    onChange={(e) => setDurationUnit(e.target.value as DurationUnit)}
+                                    onChange={(e) =>
+                                        setDurationUnit(e.target.value as DurationUnit)
+                                    }
                                 >
                                     {DURATION_UNITS.map((unit) => (
                                         <option key={unit.value} value={unit.value}>

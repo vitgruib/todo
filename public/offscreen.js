@@ -23,13 +23,7 @@ function normalizeSound(value) {
     return ALLOWED_SOUNDS.has(value) ? value : DEFAULT_SOUND;
 }
 
-function playTone(context, {
-    startTime,
-    frequency,
-    duration,
-    type = 'sine',
-    volume = 0.22,
-}) {
+function playTone(context, { startTime, frequency, duration, type = 'sine', volume = 0.22 }) {
     const endTime = startTime + duration;
     const oscillator = context.createOscillator();
     const gainNode = context.createGain();
@@ -53,7 +47,13 @@ async function playAlarmTone(sound) {
     const selectedSound = normalizeSound(sound);
 
     if (selectedSound === 'ding') {
-        playTone(context, { startTime: now, frequency: 1046, duration: 0.28, type: 'triangle', volume: 0.2 });
+        playTone(context, {
+            startTime: now,
+            frequency: 1046,
+            duration: 0.28,
+            type: 'triangle',
+            volume: 0.2,
+        });
         return;
     }
 
@@ -91,8 +91,20 @@ async function playAlarmTone(sound) {
     }
 
     if (selectedSound === 'chime') {
-        playTone(context, { startTime: now, frequency: 740, duration: 0.2, type: 'sine', volume: 0.16 });
-        playTone(context, { startTime: now + 0.18, frequency: 1110, duration: 0.38, type: 'sine', volume: 0.14 });
+        playTone(context, {
+            startTime: now,
+            frequency: 740,
+            duration: 0.2,
+            type: 'sine',
+            volume: 0.16,
+        });
+        playTone(context, {
+            startTime: now + 0.18,
+            frequency: 1110,
+            duration: 0.38,
+            type: 'sine',
+            volume: 0.14,
+        });
         return;
     }
 

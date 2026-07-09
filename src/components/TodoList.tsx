@@ -25,7 +25,11 @@ export const TodoList: React.FC<TodoListProps> = ({
         typeof todo.remindAt === 'number' ? 'short-run' : 'long-run';
 
     const sections = {
-        'short-run': { title: 'Short run', empty: 'No short-run tasks. Add one and it gets a due date.', items: [] as Todo[] },
+        'short-run': {
+            title: 'Short run',
+            empty: 'No short-run tasks. Add one and it gets a due date.',
+            items: [] as Todo[],
+        },
         'long-run': { title: 'Long run', empty: 'No long-term goals yet.', items: [] as Todo[] },
     };
 

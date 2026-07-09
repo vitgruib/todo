@@ -41,7 +41,10 @@ function openReminderPopupWindow() {
                 (win) =>
                     win.type === 'popup' &&
                     win.id !== undefined &&
-                    win.tabs?.some((tab) => typeof tab.url === 'string' && tab.url.startsWith(extensionPageBaseUrl))
+                    win.tabs?.some(
+                        (tab) =>
+                            typeof tab.url === 'string' && tab.url.startsWith(extensionPageBaseUrl),
+                    ),
             )
             .map((win) => win.id);
 
@@ -89,13 +92,15 @@ async function ensureOffscreenDocument() {
     }
 
     if (!creatingOffscreenDocument) {
-        creatingOffscreenDocument = chrome.offscreen.createDocument({
-            url: OFFSCREEN_DOCUMENT_PATH,
-            reasons: ['AUDIO_PLAYBACK'],
-            justification: 'Play an alarm sound when a reminder fires.',
-        }).finally(() => {
-            creatingOffscreenDocument = null;
-        });
+        creatingOffscreenDocument = chrome.offscreen
+            .createDocument({
+                url: OFFSCREEN_DOCUMENT_PATH,
+                reasons: ['AUDIO_PLAYBACK'],
+                justification: 'Play an alarm sound when a reminder fires.',
+            })
+            .finally(() => {
+                creatingOffscreenDocument = null;
+            });
     }
 
     await creatingOffscreenDocument;
@@ -111,12 +116,14 @@ async function playAlarmSound() {
 
         chrome.storage.local.get([ALARM_SOUND_KEY], (result) => {
             const sound = normalizeAlarmSound(result[ALARM_SOUND_KEY]);
-            chrome.runtime.sendMessage({
-                type: PLAY_SOUND_MESSAGE_TYPE,
-                sound,
-            }).catch((error) => {
-                console.error('Failed to send alarm sound message:', error);
-            });
+            chrome.runtime
+                .sendMessage({
+                    type: PLAY_SOUND_MESSAGE_TYPE,
+                    sound,
+                })
+                .catch((error) => {
+                    console.error('Failed to send alarm sound message:', error);
+                });
         });
     } catch (error) {
         console.error('Failed to play alarm sound:', error);
@@ -135,16 +142,20 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === SCHEDULE_REMINDER_MESSAGE_TYPE) {
         const taskId = typeof message.taskId === 'string' ? message.taskId.trim() : '';
-        const remindAt = typeof message.remindAt === 'number' && Number.isFinite(message.remindAt)
-            ? message.remindAt
-            : 0;
+        const remindAt =
+            typeof message.remindAt === 'number' && Number.isFinite(message.remindAt)
+                ? message.remindAt
+                : 0;
         if (!taskId || remindAt <= 0) {
             sendResponse({ ok: false, error: 'Invalid schedule-reminder payload.' });
             return false;
         }
         const alarmName = REMINDER_ALARM_PREFIX + taskId;
         chrome.alarms.clear(alarmName, () => {
-            chrome.alarms.create(alarmName, { when: remindAt, periodInMinutes: REMINDER_RENAG_PERIOD_MINUTES });
+            chrome.alarms.create(alarmName, {
+                when: remindAt,
+                periodInMinutes: REMINDER_RENAG_PERIOD_MINUTES,
+            });
             sendResponse({ ok: true });
         });
         return true;

@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Todo } from '../types';
-import { DUE_PRESETS, DURATION_UNITS, DurationUnit, durationToRemindAt, toDateTimeLocalValue } from '../reminders';
+import {
+    DUE_PRESETS,
+    DURATION_UNITS,
+    DurationUnit,
+    durationToRemindAt,
+    toDateTimeLocalValue,
+} from '../reminders';
 
 interface ReminderPopupProps {
     todo: Todo;
@@ -20,10 +26,10 @@ export const ReminderPopup: React.FC<ReminderPopupProps> = ({
     onRelegate,
 }) => {
     const [selection, setSelection] = useState<string>(
-        DUE_PRESETS.find((option) => option.value === '1d')?.value ?? DUE_PRESETS[0].value
+        DUE_PRESETS.find((option) => option.value === '1d')?.value ?? DUE_PRESETS[0].value,
     ); // default: 1 day
     const [customValue, setCustomValue] = useState<string>(() =>
-        toDateTimeLocalValue(Date.now() + 60 * 60_000)
+        toDateTimeLocalValue(Date.now() + 60 * 60_000),
     );
     const [durationAmount, setDurationAmount] = useState<string>('');
     const [durationUnit, setDurationUnit] = useState<DurationUnit>('hours');
@@ -60,16 +66,19 @@ export const ReminderPopup: React.FC<ReminderPopupProps> = ({
                 <div className="reminder-popup-eyebrow">Time's up — do it now</div>
                 <h2 className="reminder-popup-title">{todo.title}</h2>
                 <p className="reminder-popup-sub">
-                    This deadline has passed. Knock it out, push it back, or move it to your long-term goals.
+                    This deadline has passed. Knock it out, push it back, or move it to your
+                    long-term goals.
                 </p>
 
                 {showDelayMarker && (
-                    <p className="reminder-popup-delay">
-                        ⏳ Delayed {todo.delayCount}× already
-                    </p>
+                    <p className="reminder-popup-delay">⏳ Delayed {todo.delayCount}× already</p>
                 )}
 
-                <button type="button" className="reminder-btn reminder-btn--primary" onClick={onDone}>
+                <button
+                    type="button"
+                    className="reminder-btn reminder-btn--primary"
+                    onClick={onDone}
+                >
                     I did it ✓
                 </button>
 
@@ -88,7 +97,11 @@ export const ReminderPopup: React.FC<ReminderPopupProps> = ({
                         <option value={CUSTOM}>Pick a date &amp; time…</option>
                         <option value={DURATION}>Enter time until due…</option>
                     </select>
-                    <button type="button" className="reminder-btn reminder-btn--set" onClick={handleSet}>
+                    <button
+                        type="button"
+                        className="reminder-btn reminder-btn--set"
+                        onClick={handleSet}
+                    >
                         Set
                     </button>
                 </div>
@@ -124,11 +137,15 @@ export const ReminderPopup: React.FC<ReminderPopupProps> = ({
                     </div>
                 )}
 
-                <button type="button" className="reminder-btn reminder-btn--ghost" onClick={onRelegate}>
+                <button
+                    type="button"
+                    className="reminder-btn reminder-btn--ghost"
+                    onClick={onRelegate}
+                >
                     Relegate to long-term goal
                 </button>
             </div>
         </div>,
-        document.body
+        document.body,
     );
 };

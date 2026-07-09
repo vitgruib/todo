@@ -5,6 +5,7 @@ A Chrome/Edge (Manifest V3) todo list that splits work into **Short run** (tasks
 ## Prerequisites
 
 **Node.js is required** to build this project.
+
 1. Download and install Node.js from [nodejs.org](https://nodejs.org/).
 2. Verify with `node -v` and `npm -v`.
 
@@ -38,7 +39,7 @@ This runs a TypeScript type-check and produces a `dist/` folder. Then:
 
 ## Features
 
-- **Two categories** — *Short run* (has a due date) and *Long run* (no due date). Adding a task gives it a due date; relegating a task drops the due date and moves it to Long run.
+- **Two categories** — _Short run_ (has a due date) and _Long run_ (no due date). Adding a task gives it a due date; relegating a task drops the due date and moves it to Long run.
 - **Flexible due dates** — presets (30 min → 1 week), a custom date & time picker, or "time until due" (e.g. 90 minutes).
 - **Live countdown** — each short-run task shows a ticking "Due in …" caption.
 - **Due reminders** — when a deadline passes, a focused reminder popup window opens (with an alarm sound) so it can't be missed. It re-nags every 5 minutes — closing and reopening the window each time — until you complete, reschedule, or relegate the task.
@@ -47,6 +48,26 @@ This runs a TypeScript type-check and produces a `dist/` folder. Then:
 - **Settings** — choose the alarm sound.
 - **Full-screen view** — open the extension in a full browser tab.
 - **Persistence** — data is saved automatically (`chrome.storage.local` in the extension, `localStorage` in dev).
+
+## Quality checks
+
+An automated gate guards against regressions. Run the whole thing with:
+
+```bash
+npm run check
+```
+
+which runs, in order:
+
+| Script                 | Tool                 | What it verifies                                      |
+| ---------------------- | -------------------- | ----------------------------------------------------- |
+| `npm run typecheck`    | `tsc --noEmit`       | Types are sound.                                      |
+| `npm run lint`         | ESLint (flat config) | No lint errors in `src/` and `public/`.               |
+| `npm run format:check` | Prettier             | Everything is formatted (`npm run format` fixes it).  |
+| `npm run test`         | Vitest               | Functional tests pass (`npm run test:watch` for TDD). |
+
+Functional tests live next to the code they cover (e.g. `src/reminders.test.ts`, which exercises
+due-date parsing, countdown/date formatting, and the push-back counting rules).
 
 ## Project layout
 

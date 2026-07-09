@@ -3,12 +3,7 @@
     "name": "Todo",
     "version": "1.0.0",
     "description": "A todo list extension with short/long-run tasks and deadline reminders that pop up when a task is due.",
-    "permissions": [
-        "storage",
-        "alarms",
-        "tabs",
-        "offscreen"
-    ],
+    "permissions": ["storage", "alarms", "tabs", "offscreen"],
     "background": {
         "service_worker": "background.js"
     },

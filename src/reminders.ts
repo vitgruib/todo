@@ -1,6 +1,8 @@
 // Helpers for scheduling "do now" reminder alarms in the extension service worker.
 // In a plain browser (dev) these are no-ops — the in-app timer handles reminders instead.
 
+import type { Todo } from './types';
+
 const SCHEDULE_REMINDER_MESSAGE_TYPE = 'todo-ai-schedule-reminder';
 const CLEAR_REMINDER_MESSAGE_TYPE = 'todo-ai-clear-reminder';
 
@@ -64,7 +66,7 @@ export type DurationUnit = (typeof DURATION_UNITS)[number]['value'];
 export const durationToRemindAt = (
     amount: string,
     unit: DurationUnit,
-    now: number = Date.now()
+    now: number = Date.now(),
 ): number | undefined => {
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0) return undefined;
@@ -121,6 +123,37 @@ export const formatCompletedAt = (completedAt: number, now: number = Date.now())
     if (dayDiff === 0) return `Today ${time}`;
     if (dayDiff === 1) return `Yesterday ${time}`;
     return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+};
+
+/**
+ * Adjustments made within this window after a task is created are treated as corrections
+ * (e.g. replacing the default due date), not push-backs.
+ */
+export const DELAY_GRACE_MS = 5 * MINUTE_MS;
+
+/**
+ * Whether moving a task's due date to `newRemindAt` counts as a push-back. True only when the
+ * task already had a due date, the new deadline is strictly later (extended by any amount), and
+ * we're past the post-creation grace window. Pulling the deadline earlier never counts.
+ */
+export const isPushBack = (
+    prevRemindAt: number | undefined,
+    newRemindAt: number,
+    createdAt: number,
+    now: number = Date.now(),
+): boolean => {
+    const withinGracePeriod = now - createdAt < DELAY_GRACE_MS;
+    return prevRemindAt != null && newRemindAt > prevRemindAt && !withinGracePeriod;
+};
+
+/** The task's delay count after (re)scheduling to `newRemindAt` — incremented only on a push-back. */
+export const nextDelayCount = (
+    todo: Pick<Todo, 'remindAt' | 'createdAt' | 'delayCount'>,
+    newRemindAt: number,
+    now: number = Date.now(),
+): number => {
+    const current = todo.delayCount ?? 0;
+    return isPushBack(todo.remindAt, newRemindAt, todo.createdAt, now) ? current + 1 : current;
 };
 
 /** Convert an epoch-ms value into a `datetime-local` input value in local time. */

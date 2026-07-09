@@ -4,7 +4,7 @@ import { TodoList } from './components/TodoList';
 import { TodoForm } from './components/TodoForm';
 import { ReminderPopup } from './components/ReminderPopup';
 import { ArchiveList } from './components/ArchiveList';
-import { clearReminderAlarm, scheduleReminderAlarm } from './reminders';
+import { clearReminderAlarm, nextDelayCount, scheduleReminderAlarm } from './reminders';
 import type { Todo } from './types';
 
 const ALARM_SOUND_KEY = 'todo-ai-alarm-sound-v2';
@@ -18,7 +18,7 @@ const ALARM_SOUND_OPTIONS = [
 type AlarmSoundOption = (typeof ALARM_SOUND_OPTIONS)[number]['value'];
 const DEFAULT_ALARM_SOUND: AlarmSoundOption = 'alarm';
 const ALARM_SOUND_VALUES = new Set<AlarmSoundOption>(
-    ALARM_SOUND_OPTIONS.map((option) => option.value)
+    ALARM_SOUND_OPTIONS.map((option) => option.value),
 );
 
 const normalizeAlarmSound = (value: unknown): AlarmSoundOption => {
@@ -61,15 +61,21 @@ function App() {
     const activeReminder = useMemo<Todo | null>(
         () =>
             todos.find(
-                (todo) => !todo.completed && typeof todo.remindAt === 'number' && todo.remindAt <= now
+                (todo) =>
+                    !todo.completed && typeof todo.remindAt === 'number' && todo.remindAt <= now,
             ) ?? null,
-        [todos, now]
+        [todos, now],
     );
 
     // Wake up exactly when the soonest pending reminder is due (also re-checks after one is handled).
     useEffect(() => {
         const upcoming = todos
-            .filter((todo) => !todo.completed && typeof todo.remindAt === 'number' && (todo.remindAt as number) > now)
+            .filter(
+                (todo) =>
+                    !todo.completed &&
+                    typeof todo.remindAt === 'number' &&
+                    (todo.remindAt as number) > now,
+            )
             .map((todo) => todo.remindAt as number);
         if (upcoming.length === 0) {
             return;
@@ -80,20 +86,10 @@ function App() {
         return () => clearTimeout(id);
     }, [todos, now]);
 
-    // Extending a due date that was already set counts as a push-back — for every method
-    // (popup reschedule, focus-menu update, custom date, duration) and by any amount later.
-    // Pulling the deadline earlier, or giving a long-term goal its first due date, does not
-    // count. Adjustments made within 5 minutes of the task being created are treated as
-    // corrections (e.g. replacing the default due date), not push-backs.
-    const DELAY_GRACE_MS = 5 * 60 * 1000;
+    // Every due-date change (popup reschedule, focus-menu update, custom date, duration) flows
+    // through here; nextDelayCount decides whether it counts as a push-back. See reminders.ts.
     const setReminder = (todo: Todo, remindAt: number) => {
-        const withinGracePeriod = Date.now() - todo.createdAt < DELAY_GRACE_MS;
-        const isPushBack =
-            todo.remindAt != null && remindAt > todo.remindAt && !withinGracePeriod;
-        const delayCount = isPushBack
-            ? (todo.delayCount ?? 0) + 1
-            : (todo.delayCount ?? 0);
-        updateTodo(todo.id, { remindAt, delayCount });
+        updateTodo(todo.id, { remindAt, delayCount: nextDelayCount(todo, remindAt) });
         scheduleReminderAlarm(todo.id, remindAt);
         setNow(Date.now());
     };
@@ -122,14 +118,11 @@ function App() {
 
     useEffect(() => {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-            chrome.storage.local.get(
-                [ALARM_SOUND_KEY],
-                (result) => {
-                    const normalizedSound = normalizeAlarmSound(result[ALARM_SOUND_KEY]);
-                    setAlarmSound(normalizedSound);
-                    setHasLoadedSettings(true);
-                }
-            );
+            chrome.storage.local.get([ALARM_SOUND_KEY], (result) => {
+                const normalizedSound = normalizeAlarmSound(result[ALARM_SOUND_KEY]);
+                setAlarmSound(normalizedSound);
+                setHasLoadedSettings(true);
+            });
             return;
         }
 
@@ -183,9 +176,10 @@ function App() {
     };
 
     const openFullScreenView = () => {
-        const tabViewUrl = typeof chrome !== 'undefined' && chrome.runtime?.getURL
-            ? chrome.runtime.getURL('index.html?view=tab')
-            : `${window.location.pathname}?view=tab`;
+        const tabViewUrl =
+            typeof chrome !== 'undefined' && chrome.runtime?.getURL
+                ? chrome.runtime.getURL('index.html?view=tab')
+                : `${window.location.pathname}?view=tab`;
 
         if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
             chrome.tabs.create({ url: tabViewUrl });
@@ -233,7 +227,10 @@ function App() {
                                                     onChange={handleAlarmSoundChange}
                                                 >
                                                     {ALARM_SOUND_OPTIONS.map((option) => (
-                                                        <option key={option.value} value={option.value}>
+                                                        <option
+                                                            key={option.value}
+                                                            value={option.value}
+                                                        >
                                                             {option.label}
                                                         </option>
                                                     ))}

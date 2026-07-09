@@ -81,7 +81,10 @@ export const useTodos = () => {
                 apply(result[STORAGE_KEY], result[ARCHIVE_KEY]);
             });
         } else {
-            apply(safeParse(localStorage.getItem(STORAGE_KEY)), safeParse(localStorage.getItem(ARCHIVE_KEY)));
+            apply(
+                safeParse(localStorage.getItem(STORAGE_KEY)),
+                safeParse(localStorage.getItem(ARCHIVE_KEY)),
+            );
         }
     }, []);
 
@@ -119,7 +122,7 @@ export const useTodos = () => {
         if (usingExtensionStorage()) {
             const handler = (
                 changes: { [key: string]: chrome.storage.StorageChange },
-                areaName: string
+                areaName: string,
             ) => {
                 if (areaName !== 'local') return;
                 if (changes[STORAGE_KEY]) {

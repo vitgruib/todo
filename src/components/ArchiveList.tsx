@@ -22,7 +22,7 @@ export const ArchiveList: React.FC<ArchiveListProps> = ({
     // Most recently completed first — a stable, strict completion-order sort.
     const ordered = useMemo(
         () => [...archivedTodos].sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0)),
-        [archivedTodos]
+        [archivedTodos],
     );
 
     return (
@@ -50,7 +50,8 @@ export const ArchiveList: React.FC<ArchiveListProps> = ({
                                             <span className="archive-item-title">{todo.title}</span>
                                             {todo.completedAt != null && (
                                                 <span className="archive-item-time">
-                                                    Completed {formatCompletedAt(todo.completedAt, now)}
+                                                    Completed{' '}
+                                                    {formatCompletedAt(todo.completedAt, now)}
                                                 </span>
                                             )}
                                         </div>
