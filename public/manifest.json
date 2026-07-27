@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Toto Simple",
-    "version": "1.16.2",
+    "version": "1.16.3",
     "description": "A no-fuss to-do list that actually reminds you. Give a task a deadline, get a pop-up when it's due, then finish or snooze it.",
     "permissions": ["storage", "alarms", "offscreen"],
     "icons": {
@@ -21,6 +21,5 @@
             "48": "icons/icon-48.png",
             "128": "icons/icon-128.png"
         }
-    },
-    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvEQsUJdsTHbwnbA6tkyw5oD3L+l+nz+B19Q4M6Lf2CfwH2ZjUa3IvuKKtjOE3VVTwJRicbsMbCkXxiXInnePz3M8xZMdLd9i/shxH1hYcHtnLm6qz+ZXua8Q/qtsXsY4AADehK9NC2CB9BdgPdOvPIrS2cRQ1cYkD1RuGxXdZ6ie3FfXYDIYrAg8d/paXRCuklLStQ2Z5APTSW38bSPRCsSNC/TEefr1uaqyS5vyLgvwOo0TF8HesPkBzy/q8ZaGo8+GU7DWua1lYAhTe8Lc8m9Be6ZnN7KI9OzFogU8YocvKTLNafvT33cXObw7Om1HH49RltndQmD07Swd9EyWKwIDAQAB"
+    }
 }

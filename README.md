@@ -2,6 +2,10 @@
 
 A Chrome/Edge (Manifest V3) todo list that splits work into **Short run** (tasks with a due date) and **Long run** (long-term goals with no due date). When a short-run task's deadline passes, the extension force-opens a focused reminder window and keeps nagging until you deal with it.
 
+## Privacy
+
+See [the Toto Simple Privacy Policy](PRIVACY.md).
+
 ## Prerequisites
 
 **Node.js is required** to build this project.
