@@ -1,19 +1,8 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Todo } from '../types';
-import {
-    formatReminderTime,
-    toDateTimeLocalValue,
-    formatDueCaption,
-    DUE_PRESETS,
-    DURATION_UNITS,
-    DurationUnit,
-    durationToRemindAt,
-} from '../reminders';
-
-const CUSTOM = 'custom';
-const DURATION = 'duration';
-const DEFAULT_PRESET_INDEX = 4; // 1 day
+import { formatReminderTime, formatDueCaption } from '../reminders';
+import { SnoozeChips } from './SnoozeChips';
 
 interface TodoItemProps {
     todo: Todo;
@@ -24,6 +13,7 @@ interface TodoItemProps {
     onUpdateTodo: (id: string, updates: Partial<Todo>) => void;
     onSetReminder: (todo: Todo, remindAt: number) => void;
     onClearReminder: (todo: Todo) => void;
+    onRequestUrgent: (onConfirm: () => void) => void;
 }
 
 export const TodoItem: React.FC<TodoItemProps> = ({
@@ -35,17 +25,12 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     onUpdateTodo,
     onSetReminder,
     onClearReminder,
+    onRequestUrgent,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(todo.title);
     const [focusMenuOpen, setFocusMenuOpen] = useState(false);
     const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
-    const [dueSelection, setDueSelection] = useState<string>(
-        DUE_PRESETS[DEFAULT_PRESET_INDEX].value,
-    );
-    const [customDueValue, setCustomDueValue] = useState<string>('');
-    const [durationAmount, setDurationAmount] = useState<string>('');
-    const [durationUnit, setDurationUnit] = useState<DurationUnit>('hours');
     const inputRef = useRef<HTMLInputElement>(null);
     const focusMenuRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -107,34 +92,36 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     };
 
     const isShortRun = sectionId === 'short-run';
-    const showDelayMarker = !!todo.delayCount;
+    // Urgent tasks can't be delayed, so an urgent task never shows the "delayed" look — even if it
+    // carried a delay count from before it was marked urgent (removing urgent brings it back).
+    const showDelayMarker = !todo.urgent && !!todo.delayCount;
+    // Each push-back tints the task a step more dire; cap the ramp so it stays readable.
+    const DELAY_LEVEL_CAP = 5;
+    const delayLevel =
+        isShortRun && !todo.urgent ? Math.min(todo.delayCount ?? 0, DELAY_LEVEL_CAP) : 0;
 
-    const commitDueSelection = () => {
-        let ms: number;
-        if (dueSelection === CUSTOM) {
-            const parsed = new Date(customDueValue).getTime();
-            if (Number.isNaN(parsed)) return;
-            ms = parsed;
-        } else if (dueSelection === DURATION) {
-            const parsed = durationToRemindAt(durationAmount, durationUnit);
-            if (parsed === undefined) return;
-            ms = parsed;
+    // Urgent tasks can be snoozed like any other — doing so just drops the urgent flag (handled in
+    // App's setReminder), so there's nothing to lock here.
+    const canSnooze = isShortRun;
+
+    const toggleUrgent = () => {
+        if (todo.urgent) {
+            onUpdateTodo(todo.id, { urgent: false });
         } else {
-            const preset = DUE_PRESETS.find((option) => option.value === dueSelection);
-            if (!preset) return;
-            ms = Date.now() + preset.ms;
+            onRequestUrgent(() => onUpdateTodo(todo.id, { urgent: true }));
         }
-        onSetReminder(todo, ms);
-    };
-
-    const resetDueSelection = () => {
-        setDueSelection(DUE_PRESETS[DEFAULT_PRESET_INDEX].value);
-        setCustomDueValue('');
-        setDurationAmount('');
     };
 
     return (
-        <div className={`todo-item ${todo.completed ? 'completed' : ''}`}>
+        <div
+            className={`todo-item ${todo.completed ? 'completed' : ''} ${todo.urgent ? 'todo-item--urgent' : ''}`}
+            data-delay-level={delayLevel > 0 ? delayLevel : undefined}
+            style={
+                delayLevel > 0
+                    ? ({ '--delay-level': delayLevel } as React.CSSProperties)
+                    : undefined
+            }
+        >
             <div className="todo-header">
                 <input
                     type="checkbox"
@@ -163,12 +150,11 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                     ) : (
                         <>
                             <h3
-                                onDoubleClick={(e) => {
-                                    e.preventDefault();
-                                    setIsEditing(true);
-                                }}
-                                title="Double-click to edit"
+                                onClick={() => setIsEditing(true)}
+                                title="Click to edit"
+                                className="todo-title"
                             >
+                                {todo.urgent && <span className="todo-urgent-badge">URGENT</span>}
                                 {todo.title}
                             </h3>
                             {isShortRun && todo.remindAt != null && (
@@ -220,105 +206,46 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                                             Delayed {todo.delayCount}× already
                                         </p>
                                     )}
-                                    <div className="todo-focus-menu-field">
-                                        <label className="todo-focus-menu-label">
-                                            {isShortRun ? 'Change due date' : 'Give it a due date'}
-                                        </label>
-                                        <select
-                                            className="todo-focus-menu-input"
-                                            value={dueSelection}
-                                            onChange={(e) => {
-                                                const value = e.target.value;
-                                                setDueSelection(value);
-                                                if (value === CUSTOM && !customDueValue) {
-                                                    setCustomDueValue(
-                                                        toDateTimeLocalValue(
-                                                            todo.remindAt ??
-                                                                Date.now() +
-                                                                    DUE_PRESETS[
-                                                                        DEFAULT_PRESET_INDEX
-                                                                    ].ms,
-                                                        ),
-                                                    );
-                                                }
-                                            }}
-                                        >
-                                            {DUE_PRESETS.map((option) => (
-                                                <option key={option.value} value={option.value}>
-                                                    {option.label}
-                                                </option>
-                                            ))}
-                                            <option value={CUSTOM}>Pick a date &amp; time…</option>
-                                            <option value={DURATION}>Enter time until due…</option>
-                                        </select>
-                                        {dueSelection === CUSTOM && (
-                                            <input
-                                                type="datetime-local"
-                                                className="todo-focus-menu-input todo-focus-menu-date"
-                                                value={customDueValue}
-                                                onChange={(e) => setCustomDueValue(e.target.value)}
-                                            />
-                                        )}
-                                        {dueSelection === DURATION && (
-                                            <span className="todo-focus-menu-duration">
-                                                <input
-                                                    type="number"
-                                                    min="1"
-                                                    className="todo-focus-menu-input todo-focus-menu-duration-amount"
-                                                    value={durationAmount}
-                                                    onChange={(e) =>
-                                                        setDurationAmount(e.target.value)
-                                                    }
-                                                    placeholder="e.g. 90"
-                                                />
-                                                <select
-                                                    className="todo-focus-menu-input todo-focus-menu-duration-unit"
-                                                    value={durationUnit}
-                                                    onChange={(e) =>
-                                                        setDurationUnit(
-                                                            e.target.value as DurationUnit,
-                                                        )
-                                                    }
-                                                >
-                                                    {DURATION_UNITS.map((unit) => (
-                                                        <option key={unit.value} value={unit.value}>
-                                                            {unit.label}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </span>
-                                        )}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="todo-focus-menu-start"
-                                        onClick={() => {
-                                            commitDueSelection();
-                                            resetDueSelection();
+                                    {todo.urgent && (
+                                        <p className="todo-focus-menu-urgent-note">
+                                            🔴 Urgent. Pushing the deadline back removes the urgent
+                                            flag.
+                                        </p>
+                                    )}
+                                    <label className="todo-focus-menu-label">
+                                        {isShortRun ? 'Snooze / change due' : 'Give a due date'}
+                                    </label>
+                                    <SnoozeChips
+                                        includeCustom
+                                        customSeed={todo.remindAt}
+                                        remindAt={todo.remindAt}
+                                        onPick={(ms) => {
+                                            onSetReminder(todo, ms);
                                             setFocusMenuOpen(false);
                                         }}
-                                        disabled={
-                                            (dueSelection === CUSTOM && !customDueValue) ||
-                                            (dueSelection === DURATION &&
-                                                durationToRemindAt(durationAmount, durationUnit) ===
-                                                    undefined)
-                                        }
-                                    >
-                                        {isShortRun ? 'Update due date' : 'Move to short run'}
-                                    </button>
+                                    />
                                     {isShortRun && (
                                         <button
                                             type="button"
                                             className="todo-focus-menu-item"
                                             onClick={() => {
                                                 onClearReminder(todo);
-                                                resetDueSelection();
                                                 setFocusMenuOpen(false);
                                             }}
                                         >
                                             Relegate to long-term goal
                                         </button>
                                     )}
+                                    <button
+                                        type="button"
+                                        className="todo-focus-menu-item todo-focus-menu-item--urgent"
+                                        onClick={() => {
+                                            toggleUrgent();
+                                            setFocusMenuOpen(false);
+                                        }}
+                                    >
+                                        {todo.urgent ? 'Remove urgent' : '🔴 Mark urgent'}
+                                    </button>
                                 </div>
                                 <div className="todo-focus-menu-divider" />
                                 <button
@@ -335,6 +262,25 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                             document.body,
                         )}
                 </div>
+            </div>
+
+            {/* One-tap quick actions, revealed on hover/focus so the resting row stays clean. */}
+            <div className="todo-quick-actions">
+                {canSnooze && (
+                    <SnoozeChips
+                        className="snooze-chips--inline"
+                        remindAt={todo.remindAt}
+                        onPick={(ms) => onSetReminder(todo, ms)}
+                    />
+                )}
+                <button
+                    type="button"
+                    className={`quick-urgent ${todo.urgent ? 'quick-urgent--on' : ''}`}
+                    onClick={toggleUrgent}
+                    title={todo.urgent ? 'Remove urgent' : 'Mark urgent'}
+                >
+                    {todo.urgent ? '⚪ Remove urgent' : '🔴 Urgent'}
+                </button>
             </div>
         </div>
     );

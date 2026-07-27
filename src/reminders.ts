@@ -5,6 +5,7 @@ import type { Todo } from './types';
 
 const SCHEDULE_REMINDER_MESSAGE_TYPE = 'todo-ai-schedule-reminder';
 const CLEAR_REMINDER_MESSAGE_TYPE = 'todo-ai-clear-reminder';
+const SET_RENAG_PERIOD_MESSAGE_TYPE = 'todo-ai-set-renag-period';
 
 type RuntimeLike = {
     sendMessage: (message: unknown, responseCallback?: (response?: unknown) => void) => void;
@@ -29,6 +30,16 @@ export const clearReminderAlarm = (taskId: string) => {
     runtime.sendMessage({ type: CLEAR_REMINDER_MESSAGE_TYPE, taskId }, () => {});
 };
 
+/**
+ * Tell the background the new re-nag cadence (minutes; 0 = show once) so it re-applies the setting
+ * to every pending reminder immediately, without waiting for a restart.
+ */
+export const setRenagPeriodMinutes = (minutes: number) => {
+    const runtime = getRuntime();
+    if (!runtime) return;
+    runtime.sendMessage({ type: SET_RENAG_PERIOD_MESSAGE_TYPE, minutes }, () => {});
+};
+
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
@@ -48,6 +59,22 @@ export const DUE_PRESETS = [
 
 /** Default due date for a brand-new short-run task (1 day out). */
 export const DEFAULT_DUE_MS = 1 * DAY_MS;
+
+/** Extend an existing deadline; use `now` only when a task does not have one yet. */
+export const extendReminder = (
+    remindAt: number | undefined,
+    durationMs: number,
+    now: number = Date.now(),
+): number => (remindAt ?? now) + durationMs;
+
+/** One-tap snooze/reschedule durations shown as chips; `ms` is added to "now". */
+export const SNOOZE_PRESETS = [
+    { label: '+1h', ms: 1 * HOUR_MS },
+    { label: '+2h', ms: 2 * HOUR_MS },
+    { label: '+3h', ms: 3 * HOUR_MS },
+    { label: '+1d', ms: 1 * DAY_MS },
+    { label: '+2d', ms: 2 * DAY_MS },
+] as const;
 
 /** Units offered when a user types how much time until the deadline. */
 export const DURATION_UNITS = [
@@ -127,9 +154,11 @@ export const formatCompletedAt = (completedAt: number, now: number = Date.now())
 
 /**
  * Adjustments made within this window after a task is created are treated as corrections
- * (e.g. replacing the default due date), not push-backs.
+ * (e.g. fixing a just-picked due date), not push-backs.
  */
-export const DELAY_GRACE_MS = 5 * MINUTE_MS;
+export const DELAY_GRACE_MS = 1 * MINUTE_MS;
+/** Rapid deadline extensions should register as one delay, not a separate delay per click. */
+export const DELAY_DEBOUNCE_MS = 5_000;
 
 /**
  * Whether moving a task's due date to `newRemindAt` counts as a push-back. True only when the
@@ -148,12 +177,16 @@ export const isPushBack = (
 
 /** The task's delay count after (re)scheduling to `newRemindAt` — incremented only on a push-back. */
 export const nextDelayCount = (
-    todo: Pick<Todo, 'remindAt' | 'createdAt' | 'delayCount'>,
+    todo: Pick<Todo, 'remindAt' | 'createdAt' | 'delayCount' | 'lastDelayedAt'>,
     newRemindAt: number,
     now: number = Date.now(),
 ): number => {
     const current = todo.delayCount ?? 0;
-    return isPushBack(todo.remindAt, newRemindAt, todo.createdAt, now) ? current + 1 : current;
+    const isDebounced =
+        todo.lastDelayedAt != null && now - todo.lastDelayedAt < DELAY_DEBOUNCE_MS;
+    return isPushBack(todo.remindAt, newRemindAt, todo.createdAt, now) && !isDebounced
+        ? current + 1
+        : current;
 };
 
 /** Convert an epoch-ms value into a `datetime-local` input value in local time. */

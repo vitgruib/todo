@@ -47,7 +47,7 @@ This runs a TypeScript type-check and produces a `dist/` folder. Then:
 - **Archive** — completed tasks move to an archive ordered by completion time; restore or clear them.
 - **Settings** — choose the alarm sound.
 - **Full-screen view** — open the extension in a full browser tab.
-- **Persistence** — data is saved automatically (`chrome.storage.local` in the extension, `localStorage` in dev).
+- **Persistence & sync** — data is saved automatically and synced across your computers via your Chrome account (`chrome.storage.sync`, falling back to `chrome.storage.local` for anything past sync's per-key quota; `localStorage` in dev).
 
 ## Quality checks
 
@@ -73,4 +73,4 @@ due-date parsing, countdown/date formatting, and the push-back counting rules).
 
 - `src/` — React + TypeScript UI (components, `hooks/useTodos`, `reminders.ts`).
 - `public/background.js` — MV3 service worker: schedules due reminders (`chrome.alarms`), opens the reminder popup window, and plays the alarm sound via an offscreen document.
-- `public/manifest.json` — extension manifest (permissions: `storage`, `alarms`, `tabs`, `offscreen`).
+- `public/manifest.json` — extension manifest (permissions: `storage`, `alarms`, `offscreen`).

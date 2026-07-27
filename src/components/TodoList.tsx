@@ -10,6 +10,7 @@ interface TodoListProps {
     onUpdateTodo: (id: string, updates: Partial<Todo>) => void;
     onSetReminder: (todo: Todo, remindAt: number) => void;
     onClearReminder: (todo: Todo) => void;
+    onRequestUrgent: (onConfirm: () => void) => void;
 }
 
 export const TodoList: React.FC<TodoListProps> = ({
@@ -20,6 +21,7 @@ export const TodoList: React.FC<TodoListProps> = ({
     onUpdateTodo,
     onSetReminder,
     onClearReminder,
+    onRequestUrgent,
 }) => {
     const getSectionId = (todo: Todo): 'short-run' | 'long-run' =>
         typeof todo.remindAt === 'number' ? 'short-run' : 'long-run';
@@ -37,8 +39,13 @@ export const TodoList: React.FC<TodoListProps> = ({
         sections[getSectionId(todo)].items.push(todo);
     });
 
-    // Short-run tasks are always sorted by due date (soonest / most overdue first).
-    sections['short-run'].items.sort((a, b) => (a.remindAt ?? 0) - (b.remindAt ?? 0));
+    // Short-run tasks: urgent first, then by due date (soonest / most overdue first).
+    sections['short-run'].items.sort((a, b) => {
+        if (!!a.urgent !== !!b.urgent) return a.urgent ? -1 : 1;
+        return (a.remindAt ?? 0) - (b.remindAt ?? 0);
+    });
+    // Long-run goals: float urgent ones to the top, otherwise keep insertion order (stable sort).
+    sections['long-run'].items.sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0));
 
     return (
         <div className="todo-sections">
@@ -60,6 +67,7 @@ export const TodoList: React.FC<TodoListProps> = ({
                                     onUpdateTodo={onUpdateTodo}
                                     onSetReminder={onSetReminder}
                                     onClearReminder={onClearReminder}
+                                    onRequestUrgent={onRequestUrgent}
                                 />
                             ))
                         )}

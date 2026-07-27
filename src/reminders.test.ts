@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     DELAY_GRACE_MS,
+    DELAY_DEBOUNCE_MS,
     durationToRemindAt,
+    extendReminder,
     formatCompletedAt,
     formatDueCaption,
     formatReminderTime,
@@ -31,6 +33,16 @@ describe('durationToRemindAt', () => {
         expect(durationToRemindAt('abc', 'hours', 0)).toBeUndefined();
         expect(durationToRemindAt('0', 'hours', 0)).toBeUndefined();
         expect(durationToRemindAt('-5', 'hours', 0)).toBeUndefined();
+    });
+});
+
+describe('extendReminder', () => {
+    it('adds a preset duration to the existing deadline', () => {
+        expect(extendReminder(10 * HOUR, HOUR, 1 * HOUR)).toBe(11 * HOUR);
+    });
+
+    it('uses now only when a task has no existing deadline', () => {
+        expect(extendReminder(undefined, HOUR, 10 * HOUR)).toBe(11 * HOUR);
     });
 });
 
@@ -96,6 +108,28 @@ describe('nextDelayCount', () => {
             2,
         );
         expect(nextDelayCount({ createdAt: 0, delayCount: 2 }, 2_000, NOW)).toBe(2); // first due date
+    });
+
+    it('counts multiple push-backs within five seconds as one delay', () => {
+        expect(
+            nextDelayCount(
+                { remindAt: 1_000, createdAt: 0, delayCount: 2, lastDelayedAt: NOW - 1 },
+                2_000,
+                NOW,
+            ),
+        ).toBe(2);
+        expect(
+            nextDelayCount(
+                {
+                    remindAt: 1_000,
+                    createdAt: 0,
+                    delayCount: 2,
+                    lastDelayedAt: NOW - DELAY_DEBOUNCE_MS,
+                },
+                2_000,
+                NOW,
+            ),
+        ).toBe(3);
     });
 });
 

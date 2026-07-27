@@ -8,16 +8,19 @@ import {
 } from '../reminders';
 
 interface TodoFormProps {
-    onAdd: (title: string, remindAt?: number) => void;
+    onAdd: (title: string, remindAt?: number, urgent?: boolean) => void;
+    // Runs the given callback only after the user confirms the urgent warning (or it's suppressed).
+    onRequestUrgent: (onConfirm: () => void) => void;
 }
 
 const CUSTOM = 'custom';
 const DURATION = 'duration';
 const DEFAULT_PRESET_INDEX = 4; // 1 day
 
-export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
+export const TodoForm: React.FC<TodoFormProps> = ({ onAdd, onRequestUrgent }) => {
     const [title, setTitle] = useState('');
     const [taskType, setTaskType] = useState<'short-run' | 'long-run'>('short-run');
+    const [isUrgent, setIsUrgent] = useState(false);
     const [dueSelection, setDueSelection] = useState<string>(
         DUE_PRESETS[DEFAULT_PRESET_INDEX].value,
     );
@@ -52,8 +55,17 @@ export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
             durationToRemindAt(durationAmount, durationUnit) === undefined
         )
             return;
-        onAdd(trimmed, resolveRemindAt());
+        onAdd(trimmed, resolveRemindAt(), isUrgent);
         setTitle('');
+        setIsUrgent(false);
+    };
+
+    const toggleUrgent = () => {
+        if (isUrgent) {
+            setIsUrgent(false);
+            return;
+        }
+        onRequestUrgent(() => setIsUrgent(true));
     };
 
     return (
@@ -88,6 +100,14 @@ export const TodoForm: React.FC<TodoFormProps> = ({ onAdd }) => {
                         Long term
                     </button>
                 </div>
+                <button
+                    type="button"
+                    className={`todo-urgent-toggle ${isUrgent ? 'todo-urgent-toggle--active' : ''}`}
+                    onClick={toggleUrgent}
+                    aria-pressed={isUrgent}
+                >
+                    {isUrgent ? '🔴 Urgent' : 'Mark urgent'}
+                </button>
                 {taskType === 'short-run' && (
                     <>
                         <select
