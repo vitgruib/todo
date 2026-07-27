@@ -647,7 +647,10 @@ function App() {
                                                                 and other browsers use separate sync
                                                                 accounts and do not share tasks with
                                                                 Chrome. Changes can take up to 10
-                                                                seconds to appear.
+                                                                seconds to appear. You can keep
+                                                                working normally; before changing
+                                                                the same task on another computer,
+                                                                wait for it to update there.
                                                             </>
                                                         ) : (
                                                             <>
@@ -861,6 +864,11 @@ function App() {
                         <p className="modal-body">
                             Choose one source before turning on sync. This prevents task lists from
                             merging unexpectedly.
+                        </p>
+                        <p className="modal-body">
+                            Changes save on this computer immediately. They can take up to 10
+                            seconds to appear on another computer, so wait for a task to update
+                            there before changing that same task again.
                         </p>
                         <div className="backup-import-actions">
                             <button

@@ -11,10 +11,62 @@ type StorageResult = { [key: string]: unknown };
 export const SYNC_MANIFEST_KEY = 'todo-ai-sync-manifest-v1';
 const SYNC_SNAPSHOT_PREFIX = 'todo-ai-sync-snapshot-v1';
 const SYNC_GENERATION_KEY = 'todo-ai-sync-generation-v1';
+const SYNC_WRITE_DEBOUNCE_MS = 750;
+const SYNC_RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
 let syncVersion: string | null = null;
+let queuedSyncItems: StorageResult | null = null;
+let syncWriteTimer: ReturnType<typeof setTimeout> | null = null;
+let syncWriteInFlight = false;
+let syncRetryCount = 0;
 
 const snapshotKey = (version: string, key: string) => `${SYNC_SNAPSHOT_PREFIX}:${version}:${key}`;
 const makeVersion = () => globalThis.crypto.randomUUID();
+
+const scheduleQueuedSyncWrite = (delay = SYNC_WRITE_DEBOUNCE_MS): void => {
+    if (syncWriteTimer || !queuedSyncItems || !syncEnabled) return;
+    syncWriteTimer = setTimeout(() => {
+        syncWriteTimer = null;
+        flushQueuedSyncWrite();
+    }, delay);
+};
+
+const retryQueuedSyncWrite = (): void => {
+    const delay = SYNC_RETRY_DELAYS_MS[Math.min(syncRetryCount, SYNC_RETRY_DELAYS_MS.length - 1)];
+    syncRetryCount += 1;
+    scheduleQueuedSyncWrite(delay);
+};
+
+const flushQueuedSyncWrite = (): void => {
+    if (!syncEnabled || syncWriteInFlight || !queuedSyncItems) return;
+    if (!syncVersion) {
+        chrome.storage.sync.get([SYNC_MANIFEST_KEY], (manifest) => {
+            if (chrome.runtime.lastError) {
+                retryQueuedSyncWrite();
+                return;
+            }
+            const version = manifest[SYNC_MANIFEST_KEY];
+            syncVersion = typeof version === 'string' ? version : null;
+            if (syncVersion) flushQueuedSyncWrite();
+        });
+        return;
+    }
+    const items = queuedSyncItems;
+    queuedSyncItems = null;
+    syncWriteInFlight = true;
+    const snapshot = Object.fromEntries(
+        Object.entries(items).map(([key, value]) => [snapshotKey(syncVersion as string, key), value]),
+    );
+    chrome.storage.sync.set(snapshot, () => {
+        syncWriteInFlight = false;
+        if (chrome.runtime.lastError) {
+            queuedSyncItems = { ...items, ...queuedSyncItems };
+            retryQueuedSyncWrite();
+            return;
+        }
+        syncRetryCount = 0;
+        scheduleQueuedSyncWrite();
+    });
+};
 
 export const isSyncSnapshotChange = (changes: Record<string, unknown>): boolean =>
     SYNC_MANIFEST_KEY in changes ||
@@ -38,6 +90,13 @@ export const loadSyncPreference = (callback: (enabled: boolean) => void): void =
 
 export const setSyncPreference = (enabled: boolean, callback?: () => void): void => {
     syncEnabled = enabled;
+    if (!enabled) {
+        syncVersion = null;
+        queuedSyncItems = null;
+        syncRetryCount = 0;
+        if (syncWriteTimer) clearTimeout(syncWriteTimer);
+        syncWriteTimer = null;
+    }
     chrome.storage.local.set({ [SYNC_ENABLED_KEY]: enabled }, () => {
         void chrome.runtime.lastError;
         callback?.();
@@ -75,6 +134,7 @@ export const replaceSyncedSnapshot = (
                     return;
                 }
                 syncVersion = version;
+                scheduleQueuedSyncWrite(0);
                 if (typeof previousVersion === 'string' && previousVersion !== version) {
                     chrome.storage.sync.remove(
                         Object.keys(items).map((key) => snapshotKey(previousVersion, key)),
@@ -89,6 +149,10 @@ export const replaceSyncedSnapshot = (
 
 /** Remove keys from the sync store (used when the user turns syncing off) so nothing is left there. */
 export const clearSynced = (keys: string[], callback?: () => void): void => {
+    queuedSyncItems = null;
+    syncRetryCount = 0;
+    if (syncWriteTimer) clearTimeout(syncWriteTimer);
+    syncWriteTimer = null;
     chrome.storage.sync.get([SYNC_MANIFEST_KEY], (result) => {
         const version = result[SYNC_MANIFEST_KEY];
         const removals = [SYNC_MANIFEST_KEY];
@@ -175,34 +239,12 @@ export const setLocalAndSync = (items: StorageResult, callback?: () => void): vo
         });
         return;
     }
-    let pending = 2;
-    const done = () => {
-        pending -= 1;
-        if (pending === 0) callback?.();
-    };
     chrome.storage.local.set(items, () => {
         void chrome.runtime.lastError;
-        done();
+        callback?.();
     });
-    if (!syncVersion) {
-        chrome.storage.sync.get([SYNC_MANIFEST_KEY], (manifest) => {
-            const version = manifest[SYNC_MANIFEST_KEY];
-            syncVersion = typeof version === 'string' ? version : null;
-            if (!syncVersion) {
-                callback?.();
-                return;
-            }
-            setLocalAndSync(items, callback);
-        });
-        return;
-    }
-    const snapshot = Object.fromEntries(
-        Object.entries(items).map(([key, value]) => [snapshotKey(syncVersion as string, key), value]),
-    );
-    chrome.storage.sync.set(snapshot, () => {
-        void chrome.runtime.lastError;
-        done();
-    });
+    queuedSyncItems = { ...queuedSyncItems, ...items };
+    scheduleQueuedSyncWrite();
 };
 
 /**
