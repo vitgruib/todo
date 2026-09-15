@@ -1,18 +1,20 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     getLocalAndSync,
     isSyncSnapshotChange,
     replaceSyncedSnapshot,
+    setLocalAndSync,
     setSyncPreference,
     SYNC_MANIFEST_KEY,
 } from './storage';
 
 type TestStorage = Record<string, unknown>;
 
-const installSyncStorage = (options: { failSnapshotWrite?: boolean } = {}) => {
+const installSyncStorage = (options: { failSnapshotWrites?: number } = {}) => {
     const values: TestStorage = {};
     const operations: string[] = [];
     let lastError: chrome.runtime.LastError | undefined;
+    let failedSnapshotWrites = 0;
     const sync = {
         get: (keys: string[], callback: (result: TestStorage) => void) => {
             callback(Object.fromEntries(keys.filter((key) => key in values).map((key) => [key, values[key]])));
@@ -20,7 +22,8 @@ const installSyncStorage = (options: { failSnapshotWrite?: boolean } = {}) => {
         set: (items: TestStorage, callback: () => void) => {
             const isManifestWrite = SYNC_MANIFEST_KEY in items;
             operations.push(isManifestWrite ? 'manifest' : 'snapshot');
-            if (options.failSnapshotWrite && !isManifestWrite) {
+            if (!isManifestWrite && failedSnapshotWrites < (options.failSnapshotWrites ?? 0)) {
+                failedSnapshotWrites += 1;
                 lastError = { message: 'sync quota exceeded' };
                 callback();
                 lastError = undefined;
@@ -59,6 +62,7 @@ const installSyncStorage = (options: { failSnapshotWrite?: boolean } = {}) => {
 };
 
 afterEach(() => {
+    vi.useRealTimers();
     Reflect.deleteProperty(globalThis, 'chrome');
 });
 
@@ -93,7 +97,7 @@ describe('replaceSyncedSnapshot', () => {
     });
 
     it('does not publish a manifest when the snapshot write is rejected', () => {
-        const { operations, values } = installSyncStorage({ failSnapshotWrite: true });
+        const { operations, values } = installSyncStorage({ failSnapshotWrites: 1 });
         let publishedVersion: string | null | undefined;
 
         replaceSyncedSnapshot({ tasks: [{ id: 'task-1' }] }, (version) => {
@@ -124,6 +128,44 @@ describe('replaceSyncedSnapshot', () => {
             local: { 'todo-ai-data-v2': [{ id: 'local-task' }] },
             synced: {},
         });
+        setSyncPreference(false);
+    });
+
+    it('saves locally immediately and combines rapid cloud writes into one latest upload', async () => {
+        vi.useFakeTimers();
+        const { operations, values } = installSyncStorage();
+        values[SYNC_MANIFEST_KEY] = 'version-1';
+
+        setSyncPreference(true);
+        setLocalAndSync({ tasks: ['first'], archive: [] });
+        setLocalAndSync({ tasks: ['latest'], archive: ['done'] });
+
+        expect(values.tasks).toEqual(['latest']);
+        expect(operations).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(750);
+
+        expect(operations).toEqual(['snapshot']);
+        expect(values['todo-ai-sync-snapshot-v1:version-1:tasks']).toEqual(['latest']);
+        expect(values['todo-ai-sync-snapshot-v1:version-1:archive']).toEqual(['done']);
+        setSyncPreference(false);
+    });
+
+    it('retries a transient cloud rejection without dropping the latest local data', async () => {
+        vi.useFakeTimers();
+        const { operations, values } = installSyncStorage({ failSnapshotWrites: 1 });
+        values[SYNC_MANIFEST_KEY] = 'version-2';
+
+        setSyncPreference(true);
+        setLocalAndSync({ tasks: ['saved-locally'] });
+
+        await vi.advanceTimersByTimeAsync(750);
+        expect(values.tasks).toEqual(['saved-locally']);
+        expect(operations).toEqual(['snapshot']);
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(operations).toEqual(['snapshot', 'snapshot']);
+        expect(values['todo-ai-sync-snapshot-v1:version-2:tasks']).toEqual(['saved-locally']);
         setSyncPreference(false);
     });
 });
