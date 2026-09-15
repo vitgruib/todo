@@ -4,7 +4,7 @@ const BUILD_VERSION =
 console.log(`[Todo] background service worker loaded — v${BUILD_VERSION}`);
 
 const ALARM_SOUND_KEY = 'todo-ai-alarm-sound-v2';
-const ALARM_SOUND_OPTIONS = ['alarm', 'ding', 'happy', 'hard-clock', 'chime'];
+const ALARM_SOUND_OPTIONS = ['alarm', 'ding', 'happy', 'hard-clock', 'chime', 'none'];
 const DEFAULT_ALARM_SOUND = 'alarm';
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 const PLAY_SOUND_MESSAGE_TYPE = 'todo-ai-play-alarm-sound';
@@ -168,13 +168,18 @@ async function ensureOffscreenDocument() {
 
 async function playAlarmSound() {
     try {
-        const offscreenReady = await ensureOffscreenDocument();
-        if (!offscreenReady) {
-            return;
-        }
-
-        readStored([ALARM_SOUND_KEY], (result) => {
+        readStored([ALARM_SOUND_KEY], async (result) => {
             const sound = normalizeAlarmSound(result[ALARM_SOUND_KEY]);
+            // Muted — skip spinning up the offscreen document entirely.
+            if (sound === 'none') {
+                return;
+            }
+
+            const offscreenReady = await ensureOffscreenDocument();
+            if (!offscreenReady) {
+                return;
+            }
+
             chrome.runtime
                 .sendMessage({
                     type: PLAY_SOUND_MESSAGE_TYPE,

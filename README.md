@@ -45,7 +45,7 @@ This runs a TypeScript type-check and produces a `dist/` folder. Then:
 - **Due reminders** — when a deadline passes, a focused reminder popup window opens (with an alarm sound) so it can't be missed. It re-nags every 5 minutes — closing and reopening the window each time — until you complete, reschedule, or relegate the task.
 - **Push-back counter** — extending a task's deadline (by any amount, via any method) marks it as delayed and shows a "⏳ Delayed N×" badge. Pulling the deadline earlier, or setting a first due date, doesn't count.
 - **Archive** — completed tasks move to an archive ordered by completion time; restore or clear them.
-- **Settings** — choose the alarm sound.
+- **Settings** — choose the alarm sound, or set it to "None (silent)" to disable reminder sounds entirely.
 - **Full-screen view** — open the extension in a full browser tab.
 - **Persistence & sync** — data is saved automatically and synced across your computers via your Chrome account (`chrome.storage.sync`, falling back to `chrome.storage.local` for anything past sync's per-key quota; `localStorage` in dev).
 
@@ -74,3 +74,24 @@ due-date parsing, countdown/date formatting, and the push-back counting rules).
 - `src/` — React + TypeScript UI (components, `hooks/useTodos`, `reminders.ts`).
 - `public/background.js` — MV3 service worker: schedules due reminders (`chrome.alarms`), opens the reminder popup window, and plays the alarm sound via an offscreen document.
 - `public/manifest.json` — extension manifest (permissions: `storage`, `alarms`, `offscreen`).
+
+## Publishing a new version
+
+`dist.zip` (tracked in this repo) is the file uploaded to the Chrome Web Store — it's a zip of
+`dist/`'s contents (not the `dist/` folder itself; `manifest.json` must sit at the zip root).
+
+1. Bump the version number in **both** `package.json` and `public/manifest.json` (they should
+   always match).
+2. Rebuild and repackage:
+   ```bash
+   npm run check   # typecheck + lint + format + tests
+   npm run build   # produces dist/
+   cd dist && zip -r ../dist.zip . -x '.*' && cd ..
+   ```
+3. Commit `dist.zip` along with the version bump.
+4. Go to the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole),
+   open this extension's listing, and choose **Package → Upload new package**. Upload `dist.zip`.
+5. Update the store listing notes if relevant, then **Submit for review**. Review usually takes a
+   few hours to a few days; the update goes live automatically once approved.
+6. For local testing before/instead of publishing, use **Load unpacked** on the `dist/` folder (see
+   "Building for Chrome / Edge" above) — no store upload needed.
