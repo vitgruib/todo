@@ -56,6 +56,7 @@ const ALARM_SOUND_OPTIONS = [
     { value: 'happy', label: 'Happy' },
     { value: 'hard-clock', label: 'Hard Clock' },
     { value: 'chime', label: 'Chime' },
+    { value: 'none', label: 'None (silent)' },
 ] as const;
 type AlarmSoundOption = (typeof ALARM_SOUND_OPTIONS)[number]['value'];
 const DEFAULT_ALARM_SOUND: AlarmSoundOption = 'alarm';

@@ -1,7 +1,7 @@
 const PLAY_SOUND_MESSAGE_TYPE = 'todo-ai-play-alarm-sound';
 let audioContext = null;
 const DEFAULT_SOUND = 'alarm';
-const ALLOWED_SOUNDS = new Set(['alarm', 'ding', 'happy', 'hard-clock', 'chime']);
+const ALLOWED_SOUNDS = new Set(['alarm', 'ding', 'happy', 'hard-clock', 'chime', 'none']);
 
 async function getAudioContext() {
     if (!audioContext) {
@@ -42,9 +42,13 @@ function playTone(context, { startTime, frequency, duration, type = 'sine', volu
 }
 
 async function playAlarmTone(sound) {
+    const selectedSound = normalizeSound(sound);
+    if (selectedSound === 'none') {
+        return;
+    }
+
     const context = await getAudioContext();
     const now = context.currentTime;
-    const selectedSound = normalizeSound(sound);
 
     if (selectedSound === 'ding') {
         playTone(context, {

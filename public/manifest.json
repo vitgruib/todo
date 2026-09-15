@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Toto Simple",
-    "version": "1.16.1",
+    "version": "1.16.2",
     "description": "A no-fuss to-do list that actually reminds you. Give a task a deadline, get a pop-up when it's due, then finish or snooze it.",
     "permissions": ["storage", "alarms", "offscreen"],
     "icons": {
