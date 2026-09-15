@@ -87,11 +87,13 @@ due-date parsing, countdown/date formatting, and the push-back counting rules).
 1. Bump the version number in **both** `package.json` and `public/manifest.json` (they should
    always match).
 2. Rebuild and repackage:
-   ```bash
-   npm run check   # typecheck + lint + format + tests
-   npm run build   # produces dist/
-   cd dist && zip -r ../dist.zip . -x '.*' && cd ..
-   ```
+    ```bash
+    npm run check   # typecheck + lint + format + tests
+    npm run build    # produces dist/
+    cd dist && zip -rX -D ../dist.zip . -x '.*' && cd ..
+    ```
+    The `-D` flag omits directory entries — the Chrome Web Store has previously rejected a
+    package built without it.
 3. Commit `dist.zip` along with the version bump.
 4. Go to the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole),
    open this extension's listing, and choose **Package → Upload new package**. Upload `dist.zip`.
